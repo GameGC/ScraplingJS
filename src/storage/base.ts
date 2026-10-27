@@ -1,4 +1,5 @@
 import type { BoundingRectInfo, ElementFingerprint, StorageSystem } from '../types'
+import { isElementNode } from '../core/dom-utils'
 import { StorageTools } from '../core/storage-tools'
 import { extractBaseDomain, getIdentifierHash } from '../core/utils'
 
@@ -153,11 +154,11 @@ export abstract class StorageSystemMixin implements StorageSystem {
   ): ElementFingerprint {
     if (typeof element === 'object' && element !== null && 'rawNode' in element) {
       const raw = (element as { rawNode?: Element | null }).rawNode
-      if (raw && typeof Element !== 'undefined' && raw instanceof Element) {
+      if (isElementNode(raw)) {
         return StorageTools.elementToDict(raw)
       }
     }
-    if (typeof Element !== 'undefined' && element instanceof Element) {
+    if (isElementNode(element)) {
       return StorageTools.elementToDict(element)
     }
     return element as ElementFingerprint

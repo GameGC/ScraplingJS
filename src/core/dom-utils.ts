@@ -1,3 +1,8 @@
+export function isElementNode(value: unknown): value is Element {
+  if (!value || typeof value !== 'object') return false
+  return (value as Node).nodeType === 1
+}
+
 export function isInputElement(el: unknown): el is HTMLInputElement {
   if (!el || typeof el !== 'object') return false
   if (typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement) return true

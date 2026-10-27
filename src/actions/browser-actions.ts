@@ -1,6 +1,15 @@
 import type { BrowserAction, SelectorWaitState, StorageSystem } from '../types'
 import { Selector } from '../parser/selector'
-import { isElementVisible, setNativeInputValue, setNativeCheckboxValue } from '../core/utils'
+import {
+  isElementVisible,
+  isHtmlElement,
+  isInputElement,
+  isSelectElement,
+  isTextAreaElement,
+  setNativeCheckboxValue,
+  setNativeInputValue,
+} from '../core/utils'
+import { waitUntilCondition } from '../persistence/dom-waiter'
 
 export function validateActions(actions: BrowserAction[]): void {
   for (let i = 0; i < actions.length; i++) {
@@ -288,23 +297,21 @@ async function waitForElementCondition(
     throw new Error(`Timeout waiting for '${target}' to reach state '${state}'`)
   }
 
-  const start = Date.now()
-  while (true) {
-    if (signal?.aborted) {
-      throw signal.reason ?? new Error('Aborted')
-    }
-    await new Promise((r) => setTimeout(r, 25))
-    if (signal?.aborted) {
-      throw signal.reason ?? new Error('Aborted')
-    }
-    const current = check()
-    if (current.met) {
-      return current.el
-    }
-    if (Date.now() - start >= timeout) {
-      throw new Error(`Timeout waiting for '${target}' to reach state '${state}'`)
-    }
+  const { promise } = waitUntilCondition(
+    doc,
+    () => {
+      const current = check()
+      return current.met ? current : null
+    },
+    timeout,
+    25,
+    signal,
+  )
+  const result = await promise
+  if (result === null) {
+    throw new Error(`Timeout waiting for '${target}' to reach state '${state}'`)
   }
+  return result.el
 }
 
 export interface RunBrowserActionsOptions {
@@ -388,8 +395,7 @@ export async function runBrowserActions(
           break
         }
         case 'press_key': {
-          const active =
-            doc.activeElement instanceof HTMLElement ? doc.activeElement : doc.body
+          const active = isHtmlElement(doc.activeElement) ? doc.activeElement : doc.body
           active.dispatchEvent(
             new KeyboardEvent('keydown', { key: action.key, bubbles: true }),
           )
@@ -439,10 +445,7 @@ export async function runBrowserActions(
           if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
           }
-          if (
-            !(targetEl instanceof HTMLInputElement) &&
-            !(targetEl instanceof HTMLTextAreaElement)
-          ) {
+          if (!isInputElement(targetEl) && !isTextAreaElement(targetEl)) {
             throw new TypeError(
               `Target '${action.target}' is not an HTMLInputElement or HTMLTextAreaElement`,
             )
@@ -464,7 +467,7 @@ export async function runBrowserActions(
           if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
           }
-          if (!(targetEl instanceof HTMLInputElement)) {
+          if (!isInputElement(targetEl)) {
             throw new TypeError(`Target '${action.target}' is not an HTMLInputElement`)
           }
           if (targetEl.checked !== action.value) {
@@ -482,7 +485,7 @@ export async function runBrowserActions(
           if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
           }
-          if (!(targetEl instanceof HTMLSelectElement)) {
+          if (!isSelectElement(targetEl)) {
             throw new TypeError(`Target '${action.target}' is not an HTMLSelectElement`)
           }
           const labels = Array.isArray(action.value) ? action.value : [action.value]

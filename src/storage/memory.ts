@@ -344,13 +344,5 @@ export class MemoryStorageSystem extends StorageSystemMixin {
   }
 }
 
-export const SQLiteStorageSystem = MemoryStorageSystem
-export type SQLiteStorageSystem = MemoryStorageSystem
 export const AutoStorageSystem = MemoryStorageSystem
 export type AutoStorageSystem = MemoryStorageSystem
-export const LocalStorageSystem = MemoryStorageSystem
-export type LocalStorageSystem = MemoryStorageSystem
-export const IndexedDBStorageSystem = MemoryStorageSystem
-export type IndexedDBStorageSystem = MemoryStorageSystem
-export const ChromeStorageSystem = MemoryStorageSystem
-export type ChromeStorageSystem = MemoryStorageSystem

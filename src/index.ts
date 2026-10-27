@@ -1,5 +1,6 @@
 export * from './types'
 export * from './core/utils'
+export * from './core/dom-adapter'
 export * from './core/custom-types'
 export * from './core/storage-tools'
 export * from './core/similarity'

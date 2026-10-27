@@ -11,96 +11,61 @@ import type {
 } from '../types'
 import {
   AttributesHandler,
-  SelectorSyntaxError,
   TextHandler,
   TextHandlers,
 } from '../core/custom-types'
+import { resolveDomAdapter, type DomAdapter } from '../core/dom-adapter'
+import { isElementNode } from '../core/dom-utils'
+import { ElementHandleError } from '../core/errors'
 import { generateElementSelector } from '../core/mixins'
-import { areElementsAlike, calculateSimilarityScore } from '../core/similarity'
+import { relocateHighestScoring } from '../core/relocator'
 import { StorageTools, getElementDirectText } from '../core/storage-tools'
-import { cssToXpath, splitCssSelectors, xpathLiteral } from '../core/translator'
-import { cleanSpaces, escapeCssString, escapeRegExpChars } from '../core/utils'
+import { cssToXpath, splitCssSelectors } from '../core/translator'
+import { cleanSpaces } from '../core/utils'
 import {
   collectDeepElements,
-  collectDeepShadowRoots,
   getDeepParentElement,
-} from '../snapshot/shadow-dom'
+} from '../core/shadow-dom'
 import { AutoStorageSystem, MemoryStorageSystem, StorageSystemMixin } from '../storage'
+import {
+  collectAllText,
+  getAncestorElements,
+  getChildElements,
+} from './dom-traversal'
+import {
+  findElementsByRegex,
+  findElementsByText,
+  findSimilarElements,
+  parseFindAllArguments,
+} from './element-finder'
+import {
+  isRemoteHandle,
+  readHandleOuterHtml,
+  resolveElementHandle,
+} from './element-handle'
+import {
+  formatPrettyHtml,
+  loadSelectorRoot,
+  type InternalNodeWrapper,
+} from './html-loader'
+import {
+  interpolateCssSelector,
+  interpolateXPathSelector,
+  resolveCssQuerySettings,
+  resolveXPathQuerySettings,
+  runXPathQuery,
+} from './query-runner'
 import { Selectors } from './selectors'
 
-const WHITELISTED_ATTRS: Record<string, string> = {
-  class_: 'class',
-  for_: 'for',
-}
+export type { InternalNodeWrapper } from './html-loader'
 
-function removeCommentsFromNode(root: Node): void {
-  const doc = root.ownerDocument ?? (root as Document)
-  if (!doc || typeof doc.createTreeWalker !== 'function') return
-  const walker = doc.createTreeWalker(root, 128)
-  const comments: Comment[] = []
-  let current = walker.nextNode()
-  while (current) {
-    comments.push(current as Comment)
-    current = walker.nextNode()
-  }
-  for (const comment of comments) {
-    comment.parentNode?.removeChild(comment)
-  }
+export function isDomRootNode(
+  value: unknown,
+): value is Element | Document | DocumentFragment | ShadowRoot {
+  if (!value || typeof value !== 'object') return false
+  const nodeType = (value as Node).nodeType
+  return nodeType === 1 || nodeType === 9 || nodeType === 11
 }
-
-function normalizeTextNodes(root: Node): void {
-  root.normalize()
-}
-
-function parseHtmlToElement(
-  htmlContent: string,
-  keepComments: boolean,
-): { rootElement: Element; document: Document } {
-  const cleaned = htmlContent.trim().replace(/\x00/g, '') || '<html/>'
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(cleaned, 'text/html')
-  if (!keepComments) {
-    removeCommentsFromNode(doc)
-    normalizeTextNodes(doc)
-  }
-  return {
-    rootElement: doc.documentElement,
-    document: doc,
-  }
-}
-
-function formatPrettyHtml(node: Element, indent = 0): string {
-  const pad = '  '.repeat(indent)
-  const tag = node.tagName.toLowerCase()
-  let attrs = ''
-  for (let i = 0; i < node.attributes.length; i++) {
-    const a = node.attributes.item(i)
-    if (a) {
-      attrs += ` ${a.name}="${a.value.replace(/"/g, '&quot;')}"`
-    }
-  }
-  if (node.children.length === 0) {
-    const text = node.textContent ?? ''
-    return `${pad}<${tag}${attrs}>${text}</${tag}>`
-  }
-  const childLines: string[] = []
-  for (let i = 0; i < node.childNodes.length; i++) {
-    const child = node.childNodes[i]
-    if (child.nodeType === 1) {
-      childLines.push(formatPrettyHtml(child as Element, indent + 1))
-    } else if (child.nodeType === 3) {
-      const t = (child.nodeValue ?? '').trim()
-      if (t) {
-        childLines.push(`${'  '.repeat(indent + 1)}${t}`)
-      }
-    }
-  }
-  return `${pad}<${tag}${attrs}>\n${childLines.join('\n')}\n${pad}</${tag}>`
-}
-
-export type InternalNodeWrapper =
-  | { kind: 'element'; element: Element }
-  | { kind: 'text'; textValue: string; parentElement?: Element | null }
 
 export class Selector {
   readonly url: string
@@ -108,9 +73,9 @@ export class Selector {
   private readonly _adaptiveEnabled: boolean
   private readonly _pierceShadow: boolean
   private readonly _keepComments: boolean
-  private readonly _hugeTreeEnabled: boolean
   private readonly _rawBody: string | Uint8Array
   private readonly _wrapper: InternalNodeWrapper
+  private readonly _dom: DomAdapter
   readonly _storage: StorageSystem | null
   private _textCache: TextHandler | null = null
   private _attributesCache: AttributesHandler | null = null
@@ -126,15 +91,14 @@ export class Selector {
       contentOrOptions instanceof Uint8Array
     ) {
       opts = { ...options, content: contentOrOptions }
-    } else if (
-      typeof Element !== 'undefined' &&
-      (contentOrOptions instanceof Element ||
-        (typeof Document !== 'undefined' && contentOrOptions instanceof Document) ||
-        (typeof DocumentFragment !== 'undefined' &&
-          contentOrOptions instanceof DocumentFragment))
-    ) {
+    } else if (isDomRootNode(contentOrOptions)) {
       opts = { ...options, root: contentOrOptions }
     } else if (contentOrOptions && typeof contentOrOptions === 'object') {
+      if (isRemoteHandle(contentOrOptions)) {
+        throw new ElementHandleError(
+          'Selector cannot wrap a Puppeteer or Playwright ElementHandle synchronously: the handle is a remote reference owned by another process. Use `await Selector.fromHandle(handle)` to snapshot its HTML, or build the Selector inside the page.',
+        )
+      }
       opts = { ...contentOrOptions, ...options }
     } else if (contentOrOptions !== undefined && contentOrOptions !== null) {
       throw new TypeError(
@@ -151,78 +115,32 @@ export class Selector {
     const adaptiveDomain = opts.adaptiveDomain ?? opts.adaptive_domain ?? ''
     this.url = adaptiveDomain || opts.url || ''
     this.encoding = opts.encoding ?? 'utf-8'
-    this._hugeTreeEnabled = opts.hugeTree ?? opts.huge_tree ?? true
     this._keepComments = opts.keepComments ?? opts.keep_comments ?? false
     this._pierceShadow = opts.pierceShadow ?? opts.pierce_shadow ?? true
-    this._rawBody = ''
     this._storage = null
+    this._dom = resolveDomAdapter(opts.dom)
 
     if (opts.root === undefined) {
-      let htmlString: string
-      if (typeof opts.content === 'string') {
-        htmlString = opts.content
-      } else if (opts.content instanceof Uint8Array) {
-        htmlString = new TextDecoder(this.encoding).decode(opts.content).replace(/\x00/g, '')
-      } else {
+      if (typeof opts.content !== 'string' && !(opts.content instanceof Uint8Array)) {
         throw new TypeError(`content argument must be str or bytes, got ${typeof opts.content}`)
       }
-      const { rootElement } = parseHtmlToElement(htmlString, this._keepComments)
-      this._wrapper = { kind: 'element', element: rootElement }
-      this._rawBody = opts.content
-    } else {
-      const rootArg = opts.root
-      if (
-        rootArg &&
-        typeof rootArg === 'object' &&
-        'kind' in rootArg &&
-        (rootArg.kind === 'text' || rootArg.kind === 'element')
-      ) {
-        this._wrapper = rootArg as InternalNodeWrapper
-      } else if (typeof Document !== 'undefined' && rootArg instanceof Document) {
-        if (!this._keepComments) {
-          removeCommentsFromNode(rootArg)
-          normalizeTextNodes(rootArg)
-        }
-        this._wrapper = { kind: 'element', element: rootArg.documentElement }
-      } else if (
-        typeof ShadowRoot !== 'undefined' &&
-        rootArg instanceof ShadowRoot &&
-        rootArg.host
-      ) {
-        this._wrapper = { kind: 'element', element: rootArg.host }
-      } else if (typeof Element !== 'undefined' && rootArg instanceof Element) {
-        this._wrapper = { kind: 'element', element: rootArg }
-      } else if (rootArg && typeof (rootArg as Node).nodeType === 'number') {
-        const node = rootArg as Node
-        if (node.nodeType === 3) {
-          this._wrapper = {
-            kind: 'text',
-            textValue: node.nodeValue ?? '',
-            parentElement: getDeepParentElement(node),
-          }
-        } else if (node.nodeType === 2) {
-          this._wrapper = {
-            kind: 'text',
-            textValue: (node as Attr).value ?? node.nodeValue ?? '',
-            parentElement: (node as Attr).ownerElement ?? null,
-          }
-        } else if (node.nodeType === 9 && (node as Document).documentElement) {
-          this._wrapper = { kind: 'element', element: (node as Document).documentElement }
-        } else {
-          this._wrapper = {
-            kind: 'text',
-            textValue: String(node.textContent ?? ''),
-            parentElement: getDeepParentElement(node),
-          }
-        }
-      } else {
-        throw new TypeError('Invalid root node provided to Selector')
-      }
+    }
+    const rootOrContent = opts.root === undefined ? opts.content : opts.root
+    if (rootOrContent === undefined) {
+      throw new Error('Selector class needs HTML content, or root arguments to work')
+    }
+    const loaded = loadSelectorRoot(
+      rootOrContent,
+      this._keepComments,
+      this.encoding,
+      this._dom,
+    )
+    this._wrapper = loaded.wrapper
+    this._rawBody = loaded.rawBody
 
-      if (this._wrapper.kind === 'text') {
-        this._adaptiveEnabled = false
-        return this.createProxy()
-      }
+    if (this._wrapper.kind === 'text') {
+      this._adaptiveEnabled = false
+      return this.createProxy()
     }
 
     this._adaptiveEnabled = opts.adaptive !== undefined ? Boolean(opts.adaptive) : true
@@ -300,6 +218,15 @@ export class Selector {
     })
   }
 
+  static async fromHandle(
+    handle: unknown,
+    options?: Omit<SelectorOptions, 'content' | 'root'>,
+  ): Promise<Selector> {
+    const elementHandle = resolveElementHandle(handle)
+    const html = await readHandleOuterHtml(elementHandle)
+    return new Selector({ ...options, content: html })
+  }
+
   private createProxy(): this {
     return new Proxy(this, {
       get(target, prop, receiver) {
@@ -353,7 +280,7 @@ export class Selector {
       pierceShadow: this._pierceShadow,
       _storage: this._storage ?? undefined,
       keepComments: this._keepComments,
-      hugeTree: this._hugeTreeEnabled,
+      dom: this._dom,
     })
   }
 
@@ -447,71 +374,16 @@ export class Selector {
     if (this._wrapper.kind === 'text') {
       return new TextHandler(this._wrapper.textValue)
     }
-
-    let separator = '\n'
-    let strip = false
-    let ignoredTagsList: readonly string[] = ['script', 'style']
-    let onlyValidValues = true
-
-    if (typeof separatorOrOptions === 'object' && separatorOrOptions !== null) {
-      separator = separatorOrOptions.separator ?? '\n'
-      strip = separatorOrOptions.strip ?? false
-      ignoredTagsList =
-        separatorOrOptions.ignoreTags ??
-        separatorOrOptions.ignore_tags ??
-        ['script', 'style']
-      onlyValidValues =
-        separatorOrOptions.validValues ?? separatorOrOptions.valid_values ?? true
-    } else {
-      separator = separatorOrOptions
-      if (typeof stripOrOptions === 'object' && stripOrOptions !== null) {
-        if (stripOrOptions.separator !== undefined) separator = stripOrOptions.separator
-        strip = stripOrOptions.strip ?? false
-        ignoredTagsList =
-          stripOrOptions.ignoreTags ?? stripOrOptions.ignore_tags ?? ignoreTags
-        onlyValidValues =
-          stripOrOptions.validValues ?? stripOrOptions.valid_values ?? validValues
-      } else {
-        strip = stripOrOptions
-        ignoredTagsList = ignoreTags
-        onlyValidValues = validValues
-      }
-    }
-
-    const rootEl = this._wrapper.element
-    const ignoredTagSet = new Set(ignoredTagsList.map((t) => t.toLowerCase()))
-    const allStrings: string[] = []
-    const pierce = this._pierceShadow
-
-    function collectTexts(node: Node): void {
-      if (node.nodeType === 1) {
-        const el = node as Element
-        if (ignoredTagSet.has(el.tagName.toLowerCase())) {
-          return
-        }
-        if (pierce && el.shadowRoot) {
-          for (let i = 0; i < el.shadowRoot.childNodes.length; i++) {
-            collectTexts(el.shadowRoot.childNodes[i])
-          }
-        }
-      } else if (node.nodeType === 3) {
-        const rawText = node.nodeValue ?? ''
-        if (rawText) {
-          const processed = strip ? rawText.trim() : rawText
-          if (!onlyValidValues || processed.trim().length > 0) {
-            allStrings.push(processed)
-          }
-        }
-        return
-      }
-
-      for (let i = 0; i < node.childNodes.length; i++) {
-        collectTexts(node.childNodes[i])
-      }
-    }
-
-    collectTexts(rootEl)
-    return new TextHandler(allStrings.join(separator))
+    return new TextHandler(
+      collectAllText(
+        this._wrapper.element,
+        this._pierceShadow,
+        separatorOrOptions,
+        stripOrOptions,
+        ignoreTags,
+        validValues,
+      ),
+    )
   }
 
   get_all_text(
@@ -562,12 +434,9 @@ export class Selector {
     if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
-    const el = this._wrapper.element
-    const directChildren = Array.from(el.children)
-    if (this._pierceShadow && el.shadowRoot) {
-      directChildren.push(...Array.from(el.shadowRoot.children))
-    }
-    return this.convertElements(directChildren)
+    return this.convertElements(
+      getChildElements(this._wrapper.element, this._pierceShadow),
+    )
   }
 
   get siblings(): Selectors {
@@ -584,12 +453,11 @@ export class Selector {
     if (this._wrapper.kind === 'text') {
       return
     }
-    let curr = this._pierceShadow
-      ? getDeepParentElement(this._wrapper.element)
-      : this._wrapper.element.parentElement
-    while (curr) {
-      yield this.convertElement(curr)
-      curr = this._pierceShadow ? getDeepParentElement(curr) : curr.parentElement
+    for (const ancestor of getAncestorElements(
+      this._wrapper.element,
+      this._pierceShadow,
+    )) {
+      yield this.convertElement(ancestor)
     }
   }
 
@@ -754,35 +622,19 @@ export class Selector {
         return asSelectors ? new Selectors() : []
       }
       fingerprint = StorageTools.elementToDict(element.rawNode)
-    } else if (typeof Element !== 'undefined' && element instanceof Element) {
+    } else if (isElementNode(element)) {
       fingerprint = StorageTools.elementToDict(element)
     } else {
       fingerprint = element as ElementFingerprint
     }
 
-    const scoreTable = new Map<number, Element[]>()
-    const rootEl = this._wrapper.element
-    const candidates = collectDeepElements(rootEl, this._pierceShadow, false)
-
-    for (const node of candidates) {
-      const score = calculateSimilarityScore(fingerprint, node)
-      let bucket = scoreTable.get(score)
-      if (!bucket) {
-        bucket = []
-        scoreTable.set(score, bucket)
-      }
-      bucket.push(node)
-    }
-
-    if (scoreTable.size > 0) {
-      const highestProbability = Math.max(...scoreTable.keys())
-      const bestMatches = scoreTable.get(highestProbability) ?? []
-      if (bestMatches.length > 0 && highestProbability >= percentage) {
-        if (!asSelectors) {
-          return bestMatches
-        }
-        return this.convertElements(bestMatches)
-      }
+    const bestMatches = relocateHighestScoring(
+      fingerprint,
+      this._wrapper.element,
+      percentage,
+    )
+    if (bestMatches.length > 0) {
+      return asSelectors ? this.convertElements(bestMatches) : bestMatches
     }
 
     return asSelectors ? new Selectors() : []
@@ -812,84 +664,36 @@ export class Selector {
       return new Selectors()
     }
 
-    let identifier = ''
-    let isAdaptive = adaptive ?? this._adaptiveEnabled
-    let isAutoSave = autoSave ?? this._adaptiveEnabled
-    let minPercentage = percentage
-    let cssVars: Record<string, string | number> = { ...(variables ?? {}) }
-
-    if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
-      const opts = identifierOrOptions as AdaptiveQueryOptions
-      identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
-      isAdaptive = typeof opts.adaptive === 'boolean' ? opts.adaptive : (adaptive ?? this._adaptiveEnabled)
-      isAutoSave =
-        typeof opts.autoSave === 'boolean'
-          ? opts.autoSave
-          : typeof opts.auto_save === 'boolean'
-            ? opts.auto_save
-            : (autoSave ?? this._adaptiveEnabled)
-      minPercentage = typeof opts.percentage === 'number' ? opts.percentage : 40
-      if (opts.variables) {
-        for (const [k, v] of Object.entries(opts.variables)) {
-          if (typeof v === 'string' || typeof v === 'number') {
-            cssVars[k] = v
-          }
-        }
-      }
-      const reserved = new Set([
-        'identifier',
-        'adaptive',
-        'autoSave',
-        'auto_save',
-        'percentage',
-        'variables',
-      ])
-      for (const [k, v] of Object.entries(identifierOrOptions)) {
-        if (!reserved.has(k) && (typeof v === 'string' || typeof v === 'number')) {
-          cssVars[k] = v
-        }
-      }
-    } else {
-      identifier = identifierOrOptions
-    }
-
-    let interpolatedSelector = selector
-    for (const [varName, varVal] of Object.entries(cssVars)) {
-      const valStr = escapeCssString(String(varVal))
-      const quotedPattern = new RegExp(
-        '([\'"])\\$' + escapeRegExpChars(varName) + '(?![a-zA-Z0-9_])\\1',
-        'g',
-      )
-      interpolatedSelector = interpolatedSelector.replace(quotedPattern, () => `"${valStr}"`)
-      const barePattern = new RegExp(
-        '\\$' + escapeRegExpChars(varName) + '(?![a-zA-Z0-9_])',
-        'g',
-      )
-      interpolatedSelector = interpolatedSelector.replace(barePattern, () => `"${valStr}"`)
-    }
+    const settings = resolveCssQuerySettings(
+      identifierOrOptions,
+      adaptive,
+      autoSave,
+      percentage,
+      variables,
+      { adaptive: this._adaptiveEnabled, autoSave: this._adaptiveEnabled },
+    )
+    const interpolatedSelector = interpolateCssSelector(selector, settings.variables)
 
     if (!this._adaptiveEnabled || !interpolatedSelector.includes(',')) {
-      const xpathSelector = cssToXpath(interpolatedSelector)
       return this.xpath(
-        xpathSelector,
-        identifier || interpolatedSelector,
-        isAdaptive,
-        isAutoSave,
-        minPercentage,
-        cssVars,
+        cssToXpath(interpolatedSelector),
+        settings.identifier || interpolatedSelector,
+        settings.adaptive,
+        settings.autoSave,
+        settings.percentage,
+        settings.variables,
       )
     }
 
     const combinedResults = new Selectors()
     for (const singleSelector of splitCssSelectors(interpolatedSelector)) {
-      const xpathSelector = cssToXpath(singleSelector)
       const partResults = this.xpath(
-        xpathSelector,
-        identifier || singleSelector,
-        isAdaptive,
-        isAutoSave,
-        minPercentage,
-        cssVars,
+        cssToXpath(singleSelector),
+        settings.identifier || singleSelector,
+        settings.adaptive,
+        settings.autoSave,
+        settings.percentage,
+        settings.variables,
       )
       combinedResults.push(...partResults)
     }
@@ -920,109 +724,25 @@ export class Selector {
       return new Selectors()
     }
 
-    let identifier = ''
-    let isAdaptive = adaptive ?? this._adaptiveEnabled
-    let isAutoSave = autoSave ?? this._adaptiveEnabled
-    let minPercentage = percentage
-    let xpathVars: Record<string, string | number | boolean> = variables ?? {}
-
-    if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
-      const opts = identifierOrOptions as AdaptiveQueryOptions
-      identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
-      isAdaptive = typeof opts.adaptive === 'boolean' ? opts.adaptive : (adaptive ?? this._adaptiveEnabled)
-      isAutoSave =
-        typeof opts.autoSave === 'boolean'
-          ? opts.autoSave
-          : typeof opts.auto_save === 'boolean'
-            ? opts.auto_save
-            : (autoSave ?? this._adaptiveEnabled)
-      minPercentage = typeof opts.percentage === 'number' ? opts.percentage : 40
-      const reserved = new Set([
-        'identifier',
-        'adaptive',
-        'autoSave',
-        'auto_save',
-        'percentage',
-        'variables',
-      ])
-      xpathVars = opts.variables ? { ...opts.variables } : {}
-      for (const [k, v] of Object.entries(identifierOrOptions)) {
-        if (!reserved.has(k)) {
-          xpathVars[k] = v
-        }
-      }
-    } else {
-      identifier = identifierOrOptions
-    }
-
-    let resolvedXpath = selector
-    for (const [varName, varVal] of Object.entries(xpathVars)) {
-      const replacement =
-        typeof varVal === 'number' || typeof varVal === 'boolean'
-          ? String(varVal)
-          : xpathLiteral(String(varVal))
-      const pattern = new RegExp(
-        '\\$' + escapeRegExpChars(varName) + '(?![a-zA-Z0-9_])',
-        'g',
-      )
-      resolvedXpath = resolvedXpath.replace(pattern, () => replacement)
-    }
-
-    const rootEl = this._wrapper.element
-    const doc = rootEl.ownerDocument ?? document
-    const contextRoots: Element[] = [rootEl]
-
-    if (this._pierceShadow) {
-      const shadowRoots = collectDeepShadowRoots(rootEl)
-      for (const sr of shadowRoots) {
-        for (let i = 0; i < sr.children.length; i++) {
-          const childEl = sr.children.item(i)
-          if (childEl) {
-            contextRoots.push(childEl)
-          }
-        }
-      }
-    }
-
-    const matchedWrappers: Array<Element | InternalNodeWrapper> = []
-    const seenNodes = new Set<Node>()
-
-    const shadowRelativeXpath = resolvedXpath.startsWith('//')
-      ? `.${resolvedXpath}`
-      : resolvedXpath
-
-    try {
-      for (let ctxIdx = 0; ctxIdx < contextRoots.length; ctxIdx++) {
-        const ctxRoot = contextRoots[ctxIdx]
-        const exprToRun = ctxIdx === 0 ? resolvedXpath : shadowRelativeXpath
-        const snapshot = doc.evaluate(exprToRun, ctxRoot, null, 7, null)
-        for (let i = 0; i < snapshot.snapshotLength; i++) {
-          const item = snapshot.snapshotItem(i)
-          if (!item || seenNodes.has(item)) continue
-          seenNodes.add(item)
-          if (item.nodeType === 1) {
-            matchedWrappers.push(item as Element)
-          } else if (item.nodeType === 3) {
-            matchedWrappers.push({
-              kind: 'text',
-              textValue: item.nodeValue ?? '',
-              parentElement: getDeepParentElement(item),
-            })
-          } else if (item.nodeType === 2) {
-            matchedWrappers.push({
-              kind: 'text',
-              textValue: (item as Attr).value ?? '',
-              parentElement: (item as Attr).ownerElement,
-            })
-          }
-        }
-      }
-    } catch {
-      throw new SelectorSyntaxError(`Invalid XPath selector: ${selector}`)
-    }
+    const settings = resolveXPathQuerySettings(
+      identifierOrOptions,
+      adaptive,
+      autoSave,
+      percentage,
+      variables,
+      { adaptive: this._adaptiveEnabled, autoSave: this._adaptiveEnabled },
+    )
+    const resolvedXpath = interpolateXPathSelector(selector, settings.variables)
+    const matchedWrappers = runXPathQuery(
+      this._wrapper.element,
+      resolvedXpath,
+      this._pierceShadow,
+      selector,
+      this._dom,
+    )
 
     if (matchedWrappers.length > 0) {
-      if (this._adaptiveEnabled && isAutoSave) {
+      if (this._adaptiveEnabled && settings.autoSave) {
         const firstItem = matchedWrappers[0]
         let targetEl: Element | null | undefined
         if ('kind' in firstItem) {
@@ -1031,18 +751,22 @@ export class Selector {
           targetEl = firstItem
         }
         if (targetEl) {
-          this.save(targetEl, identifier || selector)
+          this.save(targetEl, settings.identifier || selector)
         }
       }
       return this.convertElements(matchedWrappers)
     }
 
-    if (this._adaptiveEnabled && isAdaptive) {
-      const elementData = this.retrieve(identifier || selector)
+    if (this._adaptiveEnabled && settings.adaptive) {
+      const elementData = this.retrieve(settings.identifier || selector)
       if (elementData) {
-        const relocatedElements = this.relocate(elementData, minPercentage, false)
-        if (relocatedElements.length > 0 && isAutoSave) {
-          this.save(relocatedElements[0], identifier || selector)
+        const relocatedElements = this.relocate(
+          elementData,
+          settings.percentage,
+          false,
+        )
+        if (relocatedElements.length > 0 && settings.autoSave) {
+          this.save(relocatedElements[0], settings.identifier || selector)
         }
         return this.convertElements(relocatedElements)
       }
@@ -1055,78 +779,7 @@ export class Selector {
     if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
-    if (args.length === 0) {
-      throw new TypeError(
-        'You have to pass something to search with, like tag name(s), tag attributes, or both.',
-      )
-    }
-
-    const attributes: Record<string, string> = {}
-    const tags = new Set<string>()
-    const patterns: RegExp[] = []
-    const functions: Array<(el: Selector) => boolean> = []
-    const selectors: string[] = []
-
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i]
-      if (typeof arg === 'string') {
-        tags.add(arg)
-      } else if (Array.isArray(arg) || arg instanceof Set) {
-        const arr = Array.from(arg)
-        if (!arr.every((x) => typeof x === 'string')) {
-          throw new TypeError(
-            'Nested Iterables are not accepted, only iterables of tag names are accepted',
-          )
-        }
-        for (const t of arr) {
-          tags.add(t)
-        }
-      } else if (arg instanceof RegExp) {
-        patterns.push(arg)
-      } else if (typeof arg === 'function') {
-        functions.push(arg as (el: Selector) => boolean)
-      } else if (arg && typeof arg === 'object') {
-        const entries = Object.entries(arg)
-        if (!entries.every(([k, v]) => typeof k === 'string' && typeof v === 'string')) {
-          throw new TypeError(
-            'Nested dictionaries are not accepted, only string keys and string values are accepted',
-          )
-        }
-        for (const [k, v] of entries) {
-          const mappedKey = WHITELISTED_ATTRS[k] ?? k
-          attributes[mappedKey] = v as string
-        }
-      } else {
-        throw new TypeError(
-          `Argument with type "${typeof arg}" is not accepted, please read the docs.`,
-        )
-      }
-    }
-
-    const effectiveTags = tags.size > 0 ? tags : new Set(['*'])
-    for (const tag of effectiveTags) {
-      let sel = tag
-      for (const [key, value] of Object.entries(attributes)) {
-        if (!key) continue
-        if (key === 'class') {
-          const classNames = value.split(/\s+/).filter(Boolean)
-          if (classNames.length > 0) {
-            sel += classNames.map((name) => `[class~="${escapeCssString(name)}"]`).join('')
-          } else {
-            sel += `[class="${escapeCssString(value)}"]`
-          }
-        } else {
-          const escapedKey =
-            typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-              ? CSS.escape(key)
-              : key.replace(/([^\w-])/g, '\\$1')
-          sel += `[${escapedKey}="${escapeCssString(value)}"]`
-        }
-      }
-      if (sel !== '*') {
-        selectors.push(sel)
-      }
-    }
+    const { selectors, patterns, functions } = parseFindAllArguments(args)
 
     let results: Selectors
     if (selectors.length > 0) {
@@ -1167,7 +820,7 @@ export class Selector {
         } else {
           targetElement = element.rawNode
         }
-      } else if (typeof Element !== 'undefined' && element instanceof Element) {
+      } else if (isElementNode(element)) {
         targetElement = element
       }
       if (targetElement) {
@@ -1278,77 +931,15 @@ export class Selector {
       return new Selectors()
     }
 
-    let threshold = 0.2
-    let ignoredAttrs: readonly string[] = ['href', 'src']
-    let shouldMatchText = false
-
-    if (
-      typeof similarityThresholdOrOptions === 'object' &&
-      similarityThresholdOrOptions !== null
-    ) {
-      threshold =
-        similarityThresholdOrOptions.similarityThreshold ??
-        similarityThresholdOrOptions.similarity_threshold ??
-        0.2
-      ignoredAttrs =
-        similarityThresholdOrOptions.ignoreAttributes ??
-        similarityThresholdOrOptions.ignore_attributes ??
-        ['href', 'src']
-      shouldMatchText =
-        similarityThresholdOrOptions.matchText ??
-        similarityThresholdOrOptions.match_text ??
-        false
-    } else {
-      threshold = similarityThresholdOrOptions
-      ignoredAttrs = ignoreAttributes
-      shouldMatchText = matchText
-    }
-
-    const rootEl = this._wrapper.element
-    const currentDepth = Array.from(this.iterancestors()).length
-    const ignoredSet = new Set(ignoredAttrs)
-    const targetAttrs: Record<string, string> = {}
-    for (let i = 0; i < rootEl.attributes.length; i++) {
-      const attr = rootEl.attributes.item(i)
-      if (attr && !ignoredSet.has(attr.name)) {
-        targetAttrs[attr.name] = attr.value
-      }
-    }
-
-    const pathParts = [this.tag]
-    const parentEl = getDeepParentElement(rootEl)
-    if (parentEl) {
-      pathParts.unshift(parentEl.tagName.toLowerCase())
-      const grandParentEl = getDeepParentElement(parentEl)
-      if (grandParentEl) {
-        pathParts.unshift(grandParentEl.tagName.toLowerCase())
-      }
-    }
-
-    const xpathPath = `//${pathParts.join('/')}[count(ancestor::*) = ${currentDepth}]`
-    const doc = rootEl.ownerDocument ?? document
-    const snapshot = doc.evaluate(xpathPath, rootEl, null, 7, null)
-    const similarElements: Element[] = []
-
-    for (let i = 0; i < snapshot.snapshotLength; i++) {
-      const candidate = snapshot.snapshotItem(i) as Element | null
-      if (
-        candidate &&
-        candidate !== rootEl &&
-        areElementsAlike(
-          rootEl,
-          targetAttrs,
-          candidate,
-          ignoredAttrs,
-          threshold,
-          shouldMatchText,
-        )
-      ) {
-        similarElements.push(candidate)
-      }
-    }
-
-    return this.convertElements(similarElements)
+    return this.convertElements(
+      findSimilarElements(
+        this._wrapper.element,
+        similarityThresholdOrOptions,
+        ignoreAttributes,
+        matchText,
+        this._dom,
+      ),
+    )
   }
 
   find_similar(
@@ -1384,51 +975,21 @@ export class Selector {
       return new Selectors()
     }
 
-    let firstMatch = true
-    let isPartial = partial
-    let isCaseSensitive = caseSensitive
-    let isCleanMatch = cleanMatch
-
-    if (typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null) {
-      firstMatch = firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true
-      isPartial = firstMatchOrOptions.partial ?? false
-      isCaseSensitive =
-        firstMatchOrOptions.caseSensitive ?? firstMatchOrOptions.case_sensitive ?? false
-      isCleanMatch =
-        firstMatchOrOptions.cleanMatch ?? firstMatchOrOptions.clean_match ?? true
-    } else {
-      firstMatch = firstMatchOrOptions
-    }
-
-    const queryText = isCaseSensitive ? text : text.toLowerCase()
-    const results = new Selectors()
-    const descendants = collectDeepElements(
-      this._wrapper.element,
-      this._pierceShadow,
-      false,
+    const firstMatch =
+      typeof firstMatchOrOptions === 'boolean'
+        ? firstMatchOrOptions
+        : (firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true)
+    const results = this.convertElements(
+      findElementsByText(
+        this._wrapper.element,
+        this._pierceShadow,
+        text,
+        firstMatchOrOptions,
+        partial,
+        caseSensitive,
+        cleanMatch,
+      ),
     )
-
-    for (let i = 0; i < descendants.length; i++) {
-      const el = descendants[i]
-      const directText = getElementDirectText(el)
-      if (!directText || !directText.trim()) continue
-
-      const nodeSel = this.convertElement(el)
-      let nodeText = nodeSel.text.toString()
-      if (isCleanMatch) {
-        nodeText = nodeSel.text.clean().toString()
-      }
-      if (!isCaseSensitive) {
-        nodeText = nodeText.toLowerCase()
-      }
-
-      if (isPartial ? nodeText.includes(queryText) : nodeText === queryText) {
-        results.push(nodeSel)
-        if (firstMatch) {
-          return results[0]
-        }
-      }
-    }
 
     if (firstMatch) {
       return results.length > 0 ? results[0] : null
@@ -1481,45 +1042,20 @@ export class Selector {
       return new Selectors()
     }
 
-    let firstMatch = true
-    let isCaseSensitive = caseSensitive
-    let isCleanMatch = cleanMatch
-
-    if (typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null) {
-      firstMatch = firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true
-      isCaseSensitive =
-        firstMatchOrOptions.caseSensitive ?? firstMatchOrOptions.case_sensitive ?? false
-      isCleanMatch =
-        firstMatchOrOptions.cleanMatch ?? firstMatchOrOptions.clean_match ?? true
-    } else {
-      firstMatch = firstMatchOrOptions
-    }
-
-    const results = new Selectors()
-    const descendants = collectDeepElements(
-      this._wrapper.element,
-      this._pierceShadow,
-      false,
+    const firstMatch =
+      typeof firstMatchOrOptions === 'boolean'
+        ? firstMatchOrOptions
+        : (firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true)
+    const results = this.convertElements(
+      findElementsByRegex(
+        this._wrapper.element,
+        this._pierceShadow,
+        query,
+        firstMatchOrOptions,
+        caseSensitive,
+        cleanMatch,
+      ),
     )
-
-    for (let i = 0; i < descendants.length; i++) {
-      const el = descendants[i]
-      const directText = getElementDirectText(el)
-      if (!directText || !directText.trim()) continue
-
-      const nodeSel = this.convertElement(el)
-      const matched = nodeSel.text.re(query, {
-        checkMatch: true,
-        cleanMatch: isCleanMatch,
-        caseSensitive: isCaseSensitive,
-      })
-      if (matched) {
-        results.push(nodeSel)
-        if (firstMatch) {
-          return results[0]
-        }
-      }
-    }
 
     if (firstMatch) {
       return results.length > 0 ? results[0] : null

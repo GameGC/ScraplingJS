@@ -1,4 +1,5 @@
 import type { ElementFingerprint } from '../types'
+import { isElementNode } from './dom-utils'
 import { calculateDictDiff, sequenceRatio } from './sequence-matcher'
 import { StorageTools, getElementDirectText } from './storage-tools'
 import { cleanSpaces } from './text-utils'
@@ -190,10 +191,9 @@ export function calculateSimilarityScore(
 ): number {
   let score = 0
   let checks = 0
-  const data =
-    typeof Element !== 'undefined' && candidate instanceof Element
-      ? StorageTools.elementToDict(candidate, false)
-      : (candidate as ElementFingerprint)
+  const data = isElementNode(candidate)
+    ? StorageTools.elementToDict(candidate, false)
+    : (candidate as ElementFingerprint)
 
   const preparedOrig = getPreparedOriginal(original)
   const origTokens = preparedOrig.tokens

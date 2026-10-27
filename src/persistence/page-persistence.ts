@@ -1,5 +1,4 @@
 import type {
-  AdaptiveQueryOptions,
   CapturedElementInfo,
   ElementFingerprint,
   PagePersistenceWatcherOptions,
@@ -8,15 +7,37 @@ import type {
   StorageSystem,
 } from '../types'
 import { isElementVisible } from '../core/utils'
-import { areElementsAlike, calculateSimilarityScore } from '../core/similarity'
+import {
+  DomAdapterError,
+  resolveDomAdapter,
+  type DomAdapter,
+} from '../core/dom-adapter'
+import { isDeepConnected } from '../core/shadow-dom'
 import { StorageTools } from '../core/storage-tools'
 import { Selector } from '../parser/selector'
 import { Selectors } from '../parser/selectors'
+import { startDomWatcher } from './dom-watcher'
+import { waitUntilCondition } from './dom-waiter'
 import {
-  collectDeepElements,
-  collectDeepShadowRoots,
-  isDeepConnected,
-} from '../snapshot/shadow-dom'
+  detectQueryMode,
+  normalizeTextQuery,
+  parseQueryArguments,
+  type ElementFilter,
+  type ResolveQueryOptions,
+  type WaitForElementOptions,
+} from './query-parser'
+import {
+  relocateAll,
+  relocateBest,
+  resolveScopeRoot,
+} from './relocator'
+
+export type {
+  ElementFilter,
+  ResolveQueryOptions,
+  WaitForElementOptions,
+} from './query-parser'
+export { parseQueryArguments } from './query-parser'
 import {
   MemoryStorageSystem,
   type StorageErrorHandler,
@@ -27,6 +48,7 @@ import {
 
 export interface PagePersistenceManagerOptions {
   document?: Document
+  dom?: DomAdapter
   url?: string
   adaptiveDomain?: string
   storage?: StorageSystem
@@ -41,100 +63,17 @@ export interface PagePersistenceManagerOptions {
   ignoreAttributes?: readonly string[]
 }
 
-export type ElementFilter<T extends HTMLElement = HTMLElement> = (
-  element: T,
-) => boolean
-
-export interface ResolveQueryOptions<T extends HTMLElement = HTMLElement>
-  extends AdaptiveQueryOptions {
-  mode?: 'auto' | 'css' | 'xpath' | 'text'
-  root?: Element | Document
-  multiple?: boolean
-  filter?: ElementFilter<T>
-}
-
-export interface WaitForElementOptions<T extends HTMLElement = HTMLElement> {
-  timeout?: number
-  visible?: boolean
-  root?: Element | Document
-  filter?: ElementFilter<T>
-  identifier?: string
-}
-
-
-function detectQueryMode(
-  query: string,
-  explicitMode?: 'auto' | 'css' | 'xpath' | 'text',
-): 'css' | 'xpath' | 'text' {
-  if (explicitMode && explicitMode !== 'auto') {
-    return explicitMode
-  }
-  const trimmed = query.trim()
-  if (trimmed.startsWith('/') || trimmed.startsWith('(')) {
-    return 'xpath'
-  }
-  if (trimmed.startsWith('text=') || trimmed.startsWith('text:')) {
-    return 'text'
-  }
-  try {
-    document.createDocumentFragment().querySelector(trimmed)
-    return 'css'
-  } catch {
-    return 'text'
-  }
-}
-
-function normalizeTextQuery(query: string): string {
-  const trimmed = query.trim()
-  if (trimmed.startsWith('text=') || trimmed.startsWith('text:')) {
-    return trimmed.slice(5).trim()
-  }
-  return trimmed
-}
-
-export function parseQueryArguments<T extends HTMLElement = HTMLElement>(
-  selectorOrSelectors: string | readonly string[],
-  arg1?: Element | Document | ElementFilter<T> | string,
-  arg2?: ElementFilter<T> | string,
-  arg3?: string,
-): {
-  root?: Element | Document
-  filter?: ElementFilter<T>
-  identifier: string
-} {
-  const defaultKey =
-    typeof selectorOrSelectors === 'string'
-      ? selectorOrSelectors
-      : (selectorOrSelectors[0] ?? 'default')
-
-  let root: Element | Document | undefined
-  let filter: ElementFilter<T> | undefined
-  let identifier = defaultKey
-
-  if (typeof arg1 === 'function') {
-    filter = arg1 as ElementFilter<T>
-    if (typeof arg2 === 'string') {
-      identifier = arg2
-    }
-  } else if (typeof arg1 === 'object' && arg1 !== null) {
-    root = arg1 as Element | Document
-    if (typeof arg2 === 'function') {
-      filter = arg2 as ElementFilter<T>
-      if (typeof arg3 === 'string') {
-        identifier = arg3
-      }
-    } else if (typeof arg2 === 'string') {
-      identifier = arg2
-    }
-  } else if (typeof arg1 === 'string') {
-    identifier = arg1
-  }
-
-  return { root, filter, identifier }
+export function resolveDocumentSource(explicit?: Document | null): Document {
+  if (explicit) return explicit
+  if (typeof document !== 'undefined') return document
+  throw new DomAdapterError(
+    'PagePersistenceManager needs a Document: pass one through the "document" option when running outside a browser.',
+  )
 }
 
 export class PagePersistenceManager {
   readonly doc: Document
+  readonly dom: DomAdapter
   readonly url: string
   readonly storage: StorageSystem
   readonly debounceMs: number
@@ -145,7 +84,8 @@ export class PagePersistenceManager {
   private readonly notifiedElements = new WeakMap<Element, Set<string>>()
 
   constructor(options?: PagePersistenceManagerOptions) {
-    this.doc = options?.document ?? document
+    this.dom = resolveDomAdapter(options?.dom)
+    this.doc = resolveDocumentSource(options?.document)
     this.url =
       options?.adaptiveDomain ??
       options?.url ??
@@ -240,6 +180,7 @@ export class PagePersistenceManager {
       adaptive: true,
       pierceShadow: true,
       _storage: this.storage,
+      dom: this.dom,
     })
   }
 
@@ -341,7 +282,7 @@ export class PagePersistenceManager {
     const rootSelector = this.createRootSelector(options?.root)
 
     for (const q of queries) {
-      const mode = detectQueryMode(q, options?.mode)
+      const mode = detectQueryMode(q, options?.mode, this.doc)
       const rawMatches = this.querySingleDirect(
         rootSelector,
         q,
@@ -480,46 +421,20 @@ export class PagePersistenceManager {
       return null
     }
 
-    const scopeRoot =
-      !root || root.nodeType === 9
-        ? ((root as Document | undefined)?.documentElement ?? this.doc.documentElement)
-        : (root as Element)
-
-    const candidates = collectDeepElements(scopeRoot, true, false)
-    let bestElement: Element | null = null
-    let bestScore = -1
-
-    for (const candidate of candidates) {
-      if (candidate.tagName.toLowerCase() !== fingerprint.tag) continue
-      if (filter && !filter(candidate as T)) continue
-      const score = calculateSimilarityScore(fingerprint, candidate)
-      if (score > bestScore) {
-        bestScore = score
-        bestElement = candidate
-      }
+    const match = relocateBest<T>(
+      fingerprint,
+      resolveScopeRoot(root, this.doc),
+      percentage,
+      filter,
+    )
+    if (!match) {
+      return null
     }
-
-    if (!bestElement || bestScore < percentage) {
-      for (const candidate of candidates) {
-        if (candidate.tagName.toLowerCase() === fingerprint.tag) continue
-        if (filter && !filter(candidate as T)) continue
-        const score = calculateSimilarityScore(fingerprint, candidate)
-        if (score > bestScore) {
-          bestScore = score
-          bestElement = candidate
-        }
-      }
+    return {
+      element: match.element,
+      selector: this.createRootSelector(match.element),
+      score: match.score,
     }
-
-    if (bestElement && bestScore >= percentage) {
-      return {
-        element: bestElement,
-        selector: this.createRootSelector(bestElement),
-        score: bestScore,
-      }
-    }
-
-    return null
   }
 
   relocateAllWithScore<T extends HTMLElement = HTMLElement>(
@@ -537,114 +452,19 @@ export class PagePersistenceManager {
       return []
     }
 
-    const scopeRoot =
-      !root || root.nodeType === 9
-        ? ((root as Document | undefined)?.documentElement ?? this.doc.documentElement)
-        : (root as Element)
+    const matches = relocateAll<T>(
+      fingerprint,
+      resolveScopeRoot(root, this.doc),
+      percentage,
+      this.ignoreAttributes,
+      filter,
+    )
 
-    const candidates = collectDeepElements(scopeRoot, true, false)
-    const scored: Array<{ element: Element; score: number }> = []
-    let bestElement: Element | null = null
-    let bestScore = -1
-
-    for (const candidate of candidates) {
-      if (candidate.tagName.toLowerCase() !== fingerprint.tag) continue
-      if (filter && !filter(candidate as T)) continue
-      const score = calculateSimilarityScore(fingerprint, candidate)
-      scored.push({ element: candidate, score })
-      if (score > bestScore) {
-        bestScore = score
-        bestElement = candidate
-      }
-    }
-
-    if (!bestElement || bestScore < percentage) {
-      for (const candidate of candidates) {
-        if (candidate.tagName.toLowerCase() === fingerprint.tag) continue
-        if (filter && !filter(candidate as T)) continue
-        const score = calculateSimilarityScore(fingerprint, candidate)
-        scored.push({ element: candidate, score })
-        if (score > bestScore) {
-          bestScore = score
-          bestElement = candidate
-        }
-      }
-    }
-
-    if (!bestElement || bestScore < percentage) {
-      return []
-    }
-
-    const ignoreList = this.ignoreAttributes
-    const ignoreSet = new Set(ignoreList)
-    const primaryAttrs: Record<string, string> = {}
-    for (let i = 0; i < bestElement.attributes.length; i++) {
-      const attr = bestElement.attributes.item(i)
-      if (attr && !ignoreSet.has(attr.name)) {
-        primaryAttrs[attr.name] = attr.value
-      }
-    }
-
-    const minCutoff = Math.max(25, percentage - 10)
-    const matched: Array<{ element: Element; selector: Selector; score: number }> = []
-
-    for (const item of scored) {
-      const isPrimary = item.element === bestElement
-      const isSameParentAlike =
-        item.element.parentElement === bestElement.parentElement &&
-        areElementsAlike(
-          bestElement,
-          primaryAttrs,
-          item.element,
-          ignoreList,
-          0.8,
-          false,
-        )
-      const isAlike =
-        isSameParentAlike ||
-        (item.score >= minCutoff &&
-          areElementsAlike(
-            bestElement,
-            primaryAttrs,
-            item.element,
-            ignoreList,
-            0.5,
-            false,
-          ))
-      if (isPrimary || isAlike) {
-        matched.push({
-          element: item.element,
-          selector: this.createRootSelector(item.element),
-          score: item.score,
-        })
-      }
-    }
-
-    return matched
-  }
-
-  private observeDeepTree(
-    obs: MutationObserver,
-    observedRoots: WeakSet<Node>,
-  ): void {
-    if (!observedRoots.has(this.doc.documentElement)) {
-      observedRoots.add(this.doc.documentElement)
-      obs.observe(this.doc.documentElement, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-      })
-    }
-    for (const sr of collectDeepShadowRoots(this.doc.documentElement)) {
-      if (!observedRoots.has(sr)) {
-        observedRoots.add(sr)
-        obs.observe(sr, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-        })
-      }
-    }
+    return matches.map((match) => ({
+      element: match.element,
+      selector: this.createRootSelector(match.element),
+      score: match.score,
+    }))
   }
 
   watch(
@@ -660,17 +480,14 @@ export class PagePersistenceManager {
   }
 
   watchElement(options: PagePersistenceWatcherOptions): () => void {
-    const mode = detectQueryMode(options.selector, options.mode)
+    const mode = detectQueryMode(options.selector, options.mode, this.doc)
     const identifier = options.identifier ?? options.selector
     const percentage = options.percentage ?? this.defaultPercentage
     const autoUpdate = options.autoUpdateFingerprint ?? true
     let currentElement: Element | null = null
-    let timer: ReturnType<typeof setTimeout> | null = null
     let stopped = false
-    const observedRoots = new WeakSet<Node>()
 
     const evaluateNow = () => {
-      if (stopped) return
       const rootSelector = this.page
       if (currentElement && isDeepConnected(this.doc.documentElement, currentElement)) {
         const directMatches = this.querySingleDirect(
@@ -733,29 +550,12 @@ export class PagePersistenceManager {
       }
     }
 
-    const observer = new MutationObserver(() => {
-      if (stopped) return
-      if (timer !== null) {
-        clearTimeout(timer)
-      }
-      timer = setTimeout(() => {
-        timer = null
-        this.observeDeepTree(observer, observedRoots)
-        evaluateNow()
-      }, this.debounceMs)
-    })
-
-    this.observeDeepTree(observer, observedRoots)
-    evaluateNow()
+    const stopWatcher = startDomWatcher(this.doc, this.debounceMs, evaluateNow, this.dom)
 
     const stop = () => {
       if (stopped) return
       stopped = true
-      if (timer !== null) {
-        clearTimeout(timer)
-        timer = null
-      }
-      observer.disconnect()
+      stopWatcher()
       this.activeStoppers.delete(stop)
     }
 
@@ -801,73 +601,20 @@ export class PagePersistenceManager {
     timeoutMs = 10000,
     pollMs = 200,
   ): Promise<R | null> {
-    return new Promise<R | null>((resolve, reject) => {
-      try {
-        const immediate = condition()
-        if (immediate) {
-          resolve(immediate)
-          return
-        }
-      } catch (err) {
-        reject(err)
-        return
-      }
-
-      if (timeoutMs <= 0) {
-        resolve(null)
-        return
-      }
-
-      let settled = false
-      const observedRoots = new WeakSet<Node>()
-
-      const checkNow = (): boolean => {
-        if (settled) return true
-        try {
-          const res = condition()
-          if (res) {
-            settled = true
-            cleanup()
-            resolve(res)
-            return true
-          }
-        } catch (err) {
-          settled = true
-          cleanup()
-          reject(err)
-          return true
-        }
-        return false
-      }
-
-      const observer = new MutationObserver(() => {
-        if (settled) return
-        if (!checkNow()) {
-          this.observeDeepTree(observer, observedRoots)
-        }
-      })
-
-      const intervalId = setInterval(() => {
-        checkNow()
-      }, pollMs)
-
-      const timeoutId = setTimeout(() => {
-        if (settled) return
-        settled = true
-        cleanup()
-        resolve(null)
-      }, timeoutMs)
-
-      const cleanup = () => {
-        clearInterval(intervalId)
-        clearTimeout(timeoutId)
-        observer.disconnect()
-        this.activeStoppers.delete(cleanup)
-      }
-
-      this.activeStoppers.add(cleanup)
-      this.observeDeepTree(observer, observedRoots)
-    })
+    const { promise, cancel } = waitUntilCondition(
+      this.doc,
+      condition,
+      timeoutMs,
+      pollMs,
+      undefined,
+      this.dom,
+    )
+    this.activeStoppers.add(cancel)
+    promise.then(
+      () => this.activeStoppers.delete(cancel),
+      () => this.activeStoppers.delete(cancel),
+    )
+    return promise
   }
 
   async destroy(): Promise<void> {

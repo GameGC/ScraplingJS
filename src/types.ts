@@ -1,3 +1,5 @@
+import type { DomAdapter } from './core/dom-adapter'
+
 export interface BoundingRectInfo {
   x: number
   y: number
@@ -53,8 +55,6 @@ export interface SelectorOptions {
   adaptiveDomain?: string
   adaptive_domain?: string
   encoding?: string
-  hugeTree?: boolean
-  huge_tree?: boolean
   keepComments?: boolean
   keep_comments?: boolean
   adaptive?: boolean
@@ -64,6 +64,7 @@ export interface SelectorOptions {
   _storage?: StorageSystem
   storageArgs?: Record<string, unknown>
   storage_args?: Record<string, unknown>
+  dom?: DomAdapter
 }
 
 export interface AdaptiveQueryOptions {
@@ -73,14 +74,6 @@ export interface AdaptiveQueryOptions {
   auto_save?: boolean
   percentage?: number
   variables?: Record<string, string | number>
-  queryEngine?: string
-  minConfidence?: number
-  strategy?: 'hybrid' | 'css-first' | 'xpath-first'
-  storage?: StorageSystem
-  save?: (key: string, fingerprint: ElementFingerprint) => void | Promise<void>
-  read?: (key: string) => ElementFingerprint | null | Promise<ElementFingerprint | null>
-  onError?: (error: unknown, context: { operation: 'save' | 'read' | 'hydrate'; key?: string }) => void
-  storageCapacity?: number
 }
 
 export interface GetAllTextOptions {

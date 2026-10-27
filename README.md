@@ -185,7 +185,7 @@ const unsubscribe = scrapling.onRelocate((oldFingerprint, newElement, event) => 
         score: event.score,
         oldTag: oldFingerprint.tag,
         newTag: newElement.tagName.toLowerCase(),
-        newSelector: event.newSelector.generateFullCssSelector,
+        newSelector: event.newFullCssSelector,
       },
     },
     '*',
@@ -284,10 +284,10 @@ Automatically re-resolve an element whenever SPA route transitions or DOM mutati
 import { scrapling } from 'scrapling-js'
 
 const stopWatching = scrapling.watch({
-  key: 'apply-cta',
+  identifier: 'apply-cta',
   selector: 'button[data-testid="apply-button"]',
   percentage: 50,
-  autoSave: true,
+  autoUpdateFingerprint: true,
   onResolved: (element, relocated, score) => {
     element.setAttribute('data-extension-bound', 'true')
     if (relocated) {
@@ -341,20 +341,99 @@ const extractedNumbers = page.css('.salary-badge').re(/\$(\d+k?)/i)
 
 ---
 
+## Node.js, SSR & Puppeteer (`DomAdapter`)
+
+The parser is DOM-based, not browser-bound: outside a browser you supply a `DomAdapter` that owns HTML parsing, XPath evaluation and (optionally) mutation observation. A tested reference adapter built on `linkedom` + `xpath` lives in [`test/node/support/linkedom-adapter.ts`](test/node/support/linkedom-adapter.ts):
+
+```ts
+import { Selector, setDomAdapter, type DomAdapter } from 'scrapling-js'
+import { parseHTML } from 'linkedom'
+import { parse as parseXPath } from 'xpath'
+
+const dom: DomAdapter = {
+  parseHtml: (html) => parseHTML(html).document,
+  evaluateXPath: (expression, contextNode) => {
+    const nodes = parseXPath(expression).select({
+      node: contextNode,
+      isHtml: true,
+      allowAnyNamespaceForNoPrefix: true,
+    }) as Node[]
+    return {
+      snapshotLength: nodes.length,
+      snapshotItem: (index) => nodes[index] ?? null,
+    }
+  },
+  isElement: (node) => (node as Node | null)?.nodeType === 1,
+  isDocument: (node) => (node as Node | null)?.nodeType === 9,
+  isDocumentFragment: (node) => (node as Node | null)?.nodeType === 11,
+  isShadowRoot: (node) => (node as Node | null)?.nodeType === 11 && Boolean((node as ShadowRoot).host),
+}
+
+setDomAdapter(dom)
+
+const page = new Selector('<div class="product-card"><span class="price">$42</span></div>')
+page.css('.product-card .price').get()
+page.xpath('//a[contains(@title, $title)]', { variables: { title: 'Senior Engineer' } })
+```
+
+Pass the adapter per instance with `new Selector(html, { dom })`, `createScrapling({ dom })` or `new PagePersistenceManager({ document, dom })` instead of registering it globally.
+
+### Puppeteer
+
+```ts
+import puppeteer from 'puppeteer'
+import { Selector, setDomAdapter } from 'scrapling-js'
+import { createLinkedomAdapter } from './linkedom-adapter'
+
+setDomAdapter(createLinkedomAdapter())
+
+const browser = await puppeteer.launch()
+const puppeteerPage = await browser.newPage()
+await puppeteerPage.goto('https://example.com')
+
+const handle = await puppeteerPage.$('#apply')
+const card = await Selector.fromHandle(handle)
+card.css('button').get()
+
+const offline = new Selector(await puppeteerPage.content())
+offline.css('.product-card').length
+```
+
+- `new Selector(elementHandle)` cannot work: an `ElementHandle` is a remote reference resolved in another process. It throws with a pointer to `await Selector.fromHandle(handle)`, which reads the handle's `outerHTML` into an offline `Selector`.
+- To keep adaptive storage across navigations, bridge it yourself: `storage.exportSnapshot()` / `importSnapshot()`, `localStorage`, `chrome.storage`, or `save` / `read` predicates bound to `page.exposeFunction`.
+- To run the library inside the page (real Chromium DOM, `watch()`, trusted state), inject the ESM bundle with `page.addScriptTag({ type: 'module', content: bundle })`. A classic `addScriptTag({ content })` fails because `dist/index.mjs` is ESM.
+- `runBrowserActions` dispatches synthetic DOM events against a `Document`; for trusted CDP input use `puppeteerPage.click()` / `puppeteerPage.type()`.
+
+### Runtime Matrix
+
+| Capability | Browser / Extension | Node + `DomAdapter` | Injected in a browser page |
+|---|---|---|---|
+| HTML parsing, CSS/XPath queries | Built in | `parseHtml` + `evaluateXPath` | Built in |
+| Adaptive relocation & storage | Built in | Built in | Built in |
+| `watch()` | `MutationObserver` | Requires `createObserver()` | `MutationObserver` |
+| `waitFor()` / `waitUntil()` | Observer + polling | Polling | Observer + polling |
+| `Selector.fromHandle(handle)` | Snapshots `outerHTML` | Snapshots `outerHTML` | Use `page.evaluate` instead |
+| `runBrowserActions` | Synthetic events | Not supported | Synthetic events (untrusted) |
+
+---
+
 ## Declarative Browser Actions (`runBrowserActions`)
 
-Execute a validated sequence of browser interactions (`click`, `fill`, `check`, `select`, `press`, `scroll`, `wait_for`, `wait_load`, `evaluate`) against any `Document`:
+Execute a validated sequence of browser interactions (`click`, `textbox`, `checkbox`, `combobox`, `press_key`, `wheel`, `wait_element`, `wait_load`, `wait_time`, `move`) against any `Document`:
 
 ```ts
 import { runBrowserActions } from 'scrapling-js'
 
-await runBrowserActions(document, [
-  { type: 'wait_load', state: 'interactive', timeout: 5_000 },
-  { type: 'fill', selector: 'input[name="q"]', value: 'Remote Rust', clear: true },
-  { type: 'check', selector: 'input[name="remote"]', checked: true },
-  { type: 'click', selector: 'button[type="submit"]' },
-  { type: 'wait_for', selector: '.results-list', state: 'visible', timeout: 8_000 },
-])
+await runBrowserActions(
+  [
+    { type: 'wait_load', state: 'domcontentloaded', timeout: 5_000 },
+    { type: 'textbox', target: 'input[name="q"]', value: 'Remote Rust', clear: true },
+    { type: 'checkbox', target: 'input[name="remote"]', value: true },
+    { type: 'click', target: 'button[type="submit"]' },
+    { type: 'wait_element', target: '.results-list', state: 'visible', timeout: 8_000 },
+  ],
+  { document },
+)
 ```
 
 ---
@@ -389,6 +468,7 @@ await runBrowserActions(document, [
 npx tsc --noEmit
 pnpm build
 pnpm test
+pnpm test:node
 pnpm bench
 ```
 

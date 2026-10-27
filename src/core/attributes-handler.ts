@@ -1,5 +1,16 @@
 import { TextHandler } from './text-handler'
 
+interface AttributeListLike {
+  length: number
+  item(index: number): Attr | null
+}
+
+function isAttributeListLike(value: unknown): value is AttributeListLike {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { length?: unknown; item?: unknown }
+  return typeof candidate.length === 'number' && typeof candidate.item === 'function'
+}
+
 export class AttributesHandler {
   private readonly _data: ReadonlyMap<string, TextHandler>
   readonly [key: string]: unknown
@@ -7,7 +18,7 @@ export class AttributesHandler {
   constructor(mapping?: Record<string, unknown> | Map<string, unknown> | NamedNodeMap | null) {
     const entries = new Map<string, TextHandler>()
     if (mapping) {
-      if (typeof NamedNodeMap !== 'undefined' && mapping instanceof NamedNodeMap) {
+      if (isAttributeListLike(mapping)) {
         for (let i = 0; i < mapping.length; i++) {
           const attr = mapping.item(i)
           if (attr) {

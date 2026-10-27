@@ -1,8 +1,8 @@
 {
   "name": "scrapling-js",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "TypeScript/JavaScript port of Scrapling for Chrome Extensions & Browser Page Persistence",
-  "license": "MIT",
+  "license": "BSD-3-Clause",
   "type": "module",
   "exports": {
     ".": {
@@ -24,6 +24,8 @@
     "build": "unbuild",
     "dev": "pnpm build --watch",
     "test": "vitest run",
+    "test:node": "vitest run --config vitest.node.config.ts",
+    "typecheck": "tsc --noEmit",
     "bench": "tsx test-bench/cli.ts",
     "bench:serve": "tsx test-bench/server/start.ts"
   },
@@ -45,7 +47,8 @@
     "typescript": "^5.9.2",
     "unbuild": "^3.6.1",
     "vitest": "^3.2.4",
-    "vitest-browser-react": "^1.0.1"
+    "vitest-browser-react": "^1.0.1",
+    "xpath": "0.0.34"
   },
   "publishConfig": {
     "access": "public",

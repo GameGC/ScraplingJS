@@ -1,4 +1,5 @@
 name: Tests
+
 on:
   push:
     branches:
@@ -9,11 +10,6 @@ on:
       - '**/*.md'
       - 'docs/**'
       - 'images/**'
-      - '.github/**'
-      - 'agent-skill/**'
-      - '*.yml'
-      - '*.yaml'
-      - 'ruff.toml'
   pull_request:
     branches:
       - main
@@ -23,119 +19,45 @@ on:
       - '**/*.md'
       - 'docs/**'
       - 'images/**'
-      - '.github/**'
-      - 'agent-skill/**'
-      - '*.yml'
-      - '*.yaml'
-      - 'ruff.toml'
 
 concurrency:
-  group: ${{github.workflow}}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   tests:
-    timeout-minutes: 60
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - python-version: "3.10"
-          os: macos-latest
-          env:
-            TOXENV: py310
-        - python-version: "3.11"
-          os: macos-latest
-          env:
-            TOXENV: py311
-        - python-version: "3.12"
-          os: macos-latest
-          env:
-            TOXENV: py312
-        - python-version: "3.13"
-          os: macos-latest
-          env:
-            TOXENV: py313
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v6
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: |
-          pyproject.toml
-          tox.ini
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
 
-    - name: Install all browsers dependencies
-      run: |
-        python3 -m pip install --upgrade pip
-        python3 -m pip install playwright==1.62.0 patchright==1.62.1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
-    - name: Get Playwright version
-      id: playwright-version
-      run: |
-        PLAYWRIGHT_VERSION=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('playwright'))")
-        echo "version=$PLAYWRIGHT_VERSION" >> $GITHUB_OUTPUT
-        echo "Playwright version: $PLAYWRIGHT_VERSION"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-    - name: Retrieve Playwright browsers from cache if any
-      id: playwright-cache
-      uses: actions/cache/restore@v5
-      with:
-        path: |
-          ~/.cache/ms-playwright
-          ~/Library/Caches/ms-playwright
-          ~/.ms-playwright
-        key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-v1
-        restore-keys: |
-          ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-
-          ${{ runner.os }}-playwright-
+      - name: Install Playwright Chrome
+        run: pnpm exec playwright install --with-deps chrome
 
-    - name: Install Playwright browsers
-      run: |
-        echo "Cache hit: ${{ steps.playwright-cache.outputs.cache-hit }}"
-        if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
-          python3 -m playwright install chromium
-        else
-          echo "Skipping install - using cached Playwright browsers"
-        fi
-        python3 -m playwright install-deps chromium
+      - name: Typecheck
+        run: pnpm typecheck
 
-    - name: Retrieve tox environments from cache if any
-      id: tox-cache
-      uses: actions/cache/restore@v5
-      with:
-        path: .tox
-        # Include python version and os in the cache key
-        key: tox-v1-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'tox.ini') }}
-        restore-keys: |
-          tox-v1-${{ runner.os }}-py${{ matrix.python-version }}-
-          tox-v1-${{ runner.os }}-
+      - name: Build
+        run: pnpm build
 
-    - name: Install tox
-      run: pip install -U tox
+      - name: Test
+        run: pnpm test
 
-    - name: Run tests
-      env: ${{ matrix.env }}
-      run: tox
-
-    - name: Save Playwright browsers to cache
-      if: github.ref == 'refs/heads/main' && steps.playwright-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
-      with:
-        path: |
-          ~/.cache/ms-playwright
-          ~/Library/Caches/ms-playwright
-          ~/.ms-playwright
-        key: ${{ steps.playwright-cache.outputs.cache-primary-key }}
-
-    - name: Save tox environments to cache
-      if: github.ref == 'refs/heads/main' && steps.tox-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
-      with:
-        path: .tox
-        key: ${{ steps.tox-cache.outputs.cache-primary-key }}
+      - name: Node Runtime Tests
+        run: pnpm test:node
