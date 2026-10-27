@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Developer Jobs, Employment | Indeed</title>
+  <meta name="framework" content="Svelte 5 / SvelteKit">
+  <meta name="compiler-mode" content="production-svelte-scoped-css">
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background-color: #f1f3f5; color: #212529; }
+
+    /* Svelte Scoped Classes */
+    header.svelte-1a8f9x2 {
+      background: #ffffff;
+      border-bottom: 1px solid #dee2e6;
+      padding: 0.75rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    .brand.svelte-1a8f9x2 { font-size: 1.5rem; font-weight: 800; color: #003a9b; }
+    .badge.svelte-1a8f9x2 {
+      font-size: 0.75rem;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #fff4e6;
+      color: #d9480f;
+      font-weight: 700;
+    }
+
+    .search-panel.svelte-1a8f9x2 {
+      display: flex;
+      max-width: 56.25rem;
+      margin: 0 auto 1.5rem auto;
+      background: #ffffff;
+      border: 1px solid #ced4da;
+      border-radius: 1.25rem;
+      padding: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      align-items: center;
+    }
+    .input-cell.svelte-1a8f9x2 {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      height: 3.5rem;
+    }
+    .icon.svelte-1a8f9x2 { margin-right: 8px; color: #868e96; display: flex; align-items: center; }
+    .input-text.svelte-1a8f9x2 {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      font-weight: 500;
+      color: #212529;
+      background: transparent;
+    }
+    .sep.svelte-1a8f9x2 {
+      width: 1px;
+      height: 2rem;
+      background: #dee2e6;
+      margin: 0 6px;
+    }
+    .btn-find.svelte-1a8f9x2 {
+      background: #004fcb;
+      color: #ffffff;
+      border: none;
+      border-radius: 0.75rem;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 0.75rem 1.75rem;
+      min-height: 3rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-find.svelte-1a8f9x2:hover { background: #003a9b; }
+
+    .filter-bar.svelte-1a8f9x2 {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: 56.25rem;
+      margin: 0 auto 1.5rem auto;
+    }
+    .pill.svelte-1a8f9x2 {
+      background: #ffffff;
+      border: 1px solid #ced4da;
+      border-radius: 9999px;
+      padding: 0.45rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .pill.active.svelte-1a8f9x2 {
+      background: #e7f5ff;
+      border-color: #1971c2;
+      color: #1971c2;
+    }
+
+    .feed.svelte-3k8b1q0 {
+      max-width: 44rem;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .job-item.svelte-3k8b1q0 {
+      background: #ffffff;
+      border: 1px solid #dee2e6;
+      border-radius: 1rem;
+      padding: 1.25rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+      transition: border 0.2s;
+    }
+    .job-item.svelte-3k8b1q0:hover { border-color: #004fcb; }
+    .job-item__title.svelte-3k8b1q0 {
+      margin: 0 0 0.35rem 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    .job-item__link.svelte-3k8b1q0 { color: #004fcb; text-decoration: none; }
+    .job-item__link.svelte-3k8b1q0:hover { text-decoration: underline; }
+    .company-badge.svelte-3k8b1q0 { font-weight: 600; font-size: 0.95rem; display: block; margin-bottom: 0.25rem; }
+    .location-text.svelte-3k8b1q0 { color: #868e96; font-size: 0.875rem; margin-bottom: 0.5rem; }
+    .pay-range.svelte-3k8b1q0 {
+      display: inline-block;
+      background: #e7f5ff;
+      color: #1971c2;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 0.375rem;
+      margin-bottom: 0.75rem;
+    }
+    .summary.svelte-3k8b1q0 { font-size: 0.875rem; color: #495057; line-height: 1.45; margin-bottom: 0.75rem; }
+    .btn-apply.svelte-3k8b1q0 {
+      background: #004fcb;
+      color: #ffffff;
+      border: none;
+      border-radius: 0.5rem;
+      padding: 0.5rem 1rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    .pagination.svelte-3k8b1q0 {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin: 2rem 0;
+    }
+    .page-btn.svelte-3k8b1q0 {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 0.5rem;
+      border: 1px solid #ced4da;
+      background: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .page-btn.current.svelte-3k8b1q0 { background: #212529; color: #fff; border-color: #212529; }
+    .btn-next.svelte-3k8b1q0 {
+      padding: 0 1rem;
+      height: 2.5rem;
+      border-radius: 0.5rem;
+      border: 1px solid #ced4da;
+      background: #fff;
+      color: #004fcb;
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header class="svelte-1a8f9x2">
+    <div class="brand svelte-1a8f9x2">indeed</div>
+    <span class="badge svelte-1a8f9x2">Version 4: Svelte 5 / SvelteKit</span>
+  </header>
+
+  <main id="jobsearch-Main">
+    <div class="search-panel svelte-1a8f9x2">
+      <div class="input-cell svelte-1a8f9x2">
+        <span class="icon svelte-1a8f9x2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </span>
+        <input
+          class="input-text svelte-1a8f9x2"
+          type="text"
+          placeholder="Job title, keywords, or company"
+          value="Unity Developer"
+        >
+      </div>
+
+      <div class="sep svelte-1a8f9x2"></div>
+
+      <div class="input-cell svelte-1a8f9x2">
+        <span class="icon svelte-1a8f9x2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        </span>
+        <input
+          class="input-text svelte-1a8f9x2"
+          type="text"
+          placeholder="City, state, zip code, or &quot;remote&quot;"
+          value="Remote"
+        >
+      </div>
+
+      <button type="submit" class="btn-find svelte-1a8f9x2">
+        Find jobs
+      </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar svelte-1a8f9x2">
+      <button class="pill active svelte-1a8f9x2">Remote</button>
+      <button class="pill svelte-1a8f9x2">Date posted</button>
+      <button class="pill svelte-1a8f9x2">Pay: $120,000+ a year</button>
+      <button class="pill svelte-1a8f9x2">Job type: Full-time</button>
+      <button class="pill svelte-1a8f9x2">Location</button>
+      <button class="pill svelte-1a8f9x2">Company</button>
+    </div>
+
+    <!-- Feed -->
+    <div class="feed svelte-3k8b1q0">
+      
+      <!-- Card 1 -->
+      <article class="job-item svelte-3k8b1q0">
+        <h4 class="job-item__title svelte-3k8b1q0">
+          <a href="/svelte/jobs/unity-01" class="job-item__link svelte-3k8b1q0">
+            Unity Developer
+          </a>
+        </h4>
+        <div class="company-badge svelte-3k8b1q0">Unity Technologies</div>
+        <div class="location-text svelte-3k8b1q0">Remote in San Francisco, CA</div>
+        <div class="pay-range svelte-3k8b1q0">$140,000 - $185,000 a year</div>
+        <p class="summary svelte-3k8b1q0">
+          Build cross-platform game features and real-time graphics pipelines using C# and Unity Engine. 3+ years experience with shader development and optimization required.
+        </p>
+        <button class="btn-apply svelte-3k8b1q0">Easily apply</button>
+      </article>
+
+      <!-- Card 2 -->
+      <article class="job-item svelte-3k8b1q0">
+        <h4 class="job-item__title svelte-3k8b1q0">
+          <a href="/svelte/jobs/unity-02" class="job-item__link svelte-3k8b1q0">
+            Senior Unity 3D Developer
+          </a>
+        </h4>
+        <div class="company-badge svelte-3k8b1q0">Electronic Arts</div>
+        <div class="location-text svelte-3k8b1q0">Austin, TX (Hybrid)</div>
+        <div class="pay-range svelte-3k8b1q0">$150,000 - $195,000 a year</div>
+        <p class="summary svelte-3k8b1q0">
+          Lead technical architecture for mobile and PC multiplayer gameplay. Expertise with Unity Netcode and ECS DOTS framework.
+        </p>
+        <button class="btn-apply svelte-3k8b1q0">Apply on company site</button>
+      </article>
+
+      <!-- Card 3 -->
+      <article class="job-item svelte-3k8b1q0">
+        <h4 class="job-item__title svelte-3k8b1q0">
+          <a href="/svelte/jobs/unity-03" class="job-item__link svelte-3k8b1q0">
+            Gameplay Programmer (Unity)
+          </a>
+        </h4>
+        <div class="company-badge svelte-3k8b1q0">Riot Games</div>
+        <div class="location-text svelte-3k8b1q0">Los Angeles, CA</div>
+        <div class="pay-range svelte-3k8b1q0">$135,000 - $170,000 a year</div>
+        <p class="summary svelte-3k8b1q0">
+          Implement mechanics, combat feel, and core loops in Unity. Collaborate closely with designers, animators, and artists.
+        </p>
+        <button class="btn-apply svelte-3k8b1q0">Easily apply</button>
+      </article>
+
+      <!-- Card 4 -->
+      <article class="job-item svelte-3k8b1q0">
+        <h4 class="job-item__title svelte-3k8b1q0">
+          <a href="/svelte/jobs/unity-04" class="job-item__link svelte-3k8b1q0">
+            Lead Unity VR / AR Engineer
+          </a>
+        </h4>
+        <div class="company-badge svelte-3k8b1q0">Meta</div>
+        <div class="location-text svelte-3k8b1q0">Menlo Park, CA (Remote)</div>
+        <div class="pay-range svelte-3k8b1q0">$180,000 - $230,000 a year</div>
+        <p class="summary svelte-3k8b1q0">
+          Architect spatial experiences and immersive interaction models for next-gen XR hardware using Unity and OpenXR.
+        </p>
+        <button class="btn-apply svelte-3k8b1q0">Easily apply</button>
+      </article>
+
+      <!-- Pagination -->
+      <div class="pagination svelte-3k8b1q0">
+        <button class="page-btn current svelte-3k8b1q0">1</button>
+        <button class="page-btn svelte-3k8b1q0">2</button>
+        <button class="page-btn svelte-3k8b1q0">3</button>
+        <button class="btn-next svelte-3k8b1q0">Next &gt;</button>
+      </div>
+
+    </div>
+  </main>
+</body>
+</html>

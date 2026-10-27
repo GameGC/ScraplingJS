@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Developer | Jobs (Hard: Extreme Layout Shift)</title>
+  <meta name="framework" content="Hard Mutation: Extreme Layout + Minimal Text Anchors">
+  <meta name="mutation-type" content="sidebar-layout + icons-only + sparse-text + reordered-blocks">
+  <!--
+    Extreme real-world cases:
+    - Desktop → app-like / two-column layout
+    - Search moved to sticky sidebar
+    - Primary CTA text shortened or icon-only
+    - Job title still present but salary / apply moved to hover overlay
+    - Pagination becomes infinite-scroll hint ("Load more")
+    - Many visual-only elements with almost no text
+  -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #0f1115; color: #e8eaed; display: flex; min-height: 100vh; }
+    aside { width: 320px; background: #1a1d24; border-right: 1px solid #2a2e38; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; height: 100vh; }
+    aside .brand { font-weight: 800; font-size: 18px; letter-spacing: -0.3px; color: #8ab4f8; }
+    aside .muted { font-size: 11px; color: #9aa0a6; text-transform: uppercase; letter-spacing: .06em; }
+    .side-field { display: flex; flex-direction: column; gap: 6px; }
+    .side-field input { background: #0f1115; border: 1px solid #3c4043; border-radius: 8px; padding: 10px 12px; color: #e8eaed; font-size: 14px; }
+    .side-field input::placeholder { color: #9aa0a6; }
+    .side-go { background: #8ab4f8; color: #0f1115; border: none; border-radius: 8px; padding: 12px; font-weight: 700; cursor: pointer; width: 100%; }
+    .side-filters { display: flex; flex-direction: column; gap: 6px; }
+    .side-filters button { text-align: left; background: transparent; border: 1px solid #3c4043; border-radius: 8px; padding: 8px 12px; color: #e8eaed; font-size: 13px; cursor: pointer; }
+    .side-filters button.on { border-color: #8ab4f8; color: #8ab4f8; background: rgba(138,180,248,.08); }
+    .content { flex: 1; padding: 24px 28px; overflow-y: auto; }
+    .content h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+    .content .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .tile { background: #1a1d24; border: 1px solid #2a2e38; border-radius: 12px; padding: 16px; position: relative; transition: border-color .15s; }
+    .tile:hover { border-color: #8ab4f8; }
+    .tile .t { font-size: 15px; font-weight: 700; color: #8ab4f8; text-decoration: none; display: block; margin-bottom: 4px; }
+    .tile .c { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .tile .l { font-size: 12px; color: #9aa0a6; margin-bottom: 10px; }
+    .tile .s { font-size: 12px; color: #81c995; font-weight: 600; margin-bottom: 12px; }
+    .tile .row { display: flex; gap: 8px; }
+    .tile .row button, .tile .row a {
+      flex: 1; text-align: center; border-radius: 6px; padding: 8px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; border: none;
+    }
+    .tile .row .a { background: #8ab4f8; color: #0f1115; }
+    .tile .row .sve { background: transparent; border: 1px solid #3c4043; color: #e8eaed; }
+    .load { display: block; width: 100%; margin-top: 24px; background: #2a2e38; border: none; color: #e8eaed; padding: 14px; border-radius: 10px; font-weight: 600; cursor: pointer; }
+    .hard-tag { position: fixed; bottom: 12px; right: 12px; background: #ff6d00; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 4px; z-index: 50; }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand">indeed</div>
+    <div class="muted">Search</div>
+
+    <div class="side-field">
+      <input type="text" name="q" placeholder="Title, skill, or company" value="Unity Developer" />
+    </div>
+    <div class="side-field">
+      <input type="text" name="l" placeholder="Location or remote" value="Remote" />
+    </div>
+    <!-- Extreme: CTA text reduced to single word -->
+    <button type="submit" class="side-go">Search</button>
+
+    <div class="muted" style="margin-top:8px;">Filters</div>
+    <div class="side-filters">
+      <button type="button" class="on">Remote</button>
+      <button type="button">Date posted</button>
+      <button type="button">$120k+</button>
+      <button type="button">Full-time</button>
+    </div>
+  </aside>
+
+  <div class="content">
+    <h1>Unity Developer roles</h1>
+    <p class="sub">287 openings · sorted by relevance</p>
+
+    <div class="grid">
+      <div class="tile" data-jk="unity-01">
+        <a class="t" href="/j/unity-01">Unity Developer</a>
+        <div class="c">Unity Technologies</div>
+        <div class="l">Remote · SF Bay Area</div>
+        <div class="s">$140k – $185k</div>
+        <div class="row">
+          <!-- Extreme: apply text shortened -->
+          <button type="button" class="a">Apply</button>
+          <button type="button" class="sve">Save</button>
+        </div>
+      </div>
+
+      <div class="tile" data-jk="noise-a">
+        <a class="t" href="/j/noise-a">Unity Developer Intern</a>
+        <div class="c">Indie Studio</div>
+        <div class="l">Remote</div>
+        <div class="s">$25 – $35 / hr</div>
+        <div class="row">
+          <button type="button" class="a">Apply</button>
+          <button type="button" class="sve">Save</button>
+        </div>
+      </div>
+
+      <div class="tile" data-jk="noise-b">
+        <a class="t" href="/j/noise-b">Senior Unity Developer</a>
+        <div class="c">Unity Technologies</div>
+        <div class="l">On-site · San Francisco</div>
+        <div class="s">$175k – $220k</div>
+        <div class="row">
+          <button type="button" class="a">Apply</button>
+          <button type="button" class="sve">Save</button>
+        </div>
+      </div>
+
+      <div class="tile" data-jk="noise-c">
+        <a class="t" href="/j/noise-c">Unity Tools Engineer</a>
+        <div class="c">Riot Games</div>
+        <div class="l">Hybrid · Los Angeles</div>
+        <div class="s">$150k – $190k</div>
+        <div class="row">
+          <button type="button" class="a">Apply</button>
+          <button type="button" class="sve">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination text completely changed -->
+    <button type="button" class="load">Load more results</button>
+  </div>
+
+  <div class="hard-tag">Hard #9 · Extreme Layout Shift</div>
+</body>
+</html>

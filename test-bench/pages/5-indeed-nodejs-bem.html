@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Developer Jobs, Employment | Indeed</title>
+  <meta name="framework" content="Node.js Express SSR + BEM">
+  <meta name="compiler-mode" content="server-side-rendered-classic">
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin: 0; background: #fafafa; color: #222; }
+
+    .indeed-header {
+      background: #ffffff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 0.75rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    .indeed-header__logo { font-size: 1.5rem; font-weight: 800; color: #003a9b; }
+    .indeed-header__badge {
+      font-size: 0.75rem;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #f3f0ff;
+      color: #6741d9;
+      font-weight: 700;
+    }
+
+    .indeed-search {
+      display: flex;
+      max-width: 56.25rem;
+      margin: 0 auto 1.5rem auto;
+      background: #ffffff;
+      border: 1px solid #cccccc;
+      border-radius: 1.25rem;
+      padding: 6px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+      align-items: center;
+    }
+    .indeed-search__group {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      height: 3.5rem;
+    }
+    .indeed-search__icon { margin-right: 8px; color: #777; display: flex; align-items: center; }
+    .indeed-search__control {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      font-weight: 500;
+      background: transparent;
+      color: #222;
+    }
+    .indeed-search__divider {
+      width: 1px;
+      height: 2rem;
+      background: #e0e0e0;
+      margin: 0 4px;
+    }
+    .indeed-btn--primary {
+      background: #004fcb;
+      color: #ffffff;
+      border: none;
+      border-radius: 0.75rem;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 0.75rem 1.75rem;
+      min-height: 3rem;
+      cursor: pointer;
+    }
+    .indeed-btn--primary:hover { background: #003a9b; }
+
+    .indeed-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: 56.25rem;
+      margin: 0 auto 1.5rem auto;
+    }
+    .indeed-pill {
+      background: #ffffff;
+      border: 1px solid #cccccc;
+      border-radius: 9999px;
+      padding: 0.45rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .indeed-pill--selected {
+      background: #e8f0fe;
+      border-color: #1a73e8;
+      color: #1a73e8;
+    }
+
+    .indeed-results {
+      max-width: 44rem;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .indeed-jobcard {
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+      border-radius: 1rem;
+      padding: 1.25rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .indeed-jobcard:hover { border-color: #004fcb; }
+    .indeed-jobcard__heading {
+      margin: 0 0 0.35rem 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    .indeed-jobcard__link { color: #004fcb; text-decoration: none; }
+    .indeed-jobcard__link:hover { text-decoration: underline; }
+    .indeed-jobcard__company { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.25rem; }
+    .indeed-jobcard__location { color: #666; font-size: 0.875rem; margin-bottom: 0.5rem; }
+    .indeed-jobcard__salary-tag {
+      display: inline-block;
+      background: #e8f0fe;
+      color: #1a73e8;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 0.375rem;
+      margin-bottom: 0.75rem;
+    }
+    .indeed-jobcard__summary { font-size: 0.875rem; color: #444; line-height: 1.45; margin-bottom: 0.75rem; }
+    .indeed-btn--apply {
+      background: #004fcb;
+      color: #ffffff;
+      border: none;
+      border-radius: 0.5rem;
+      padding: 0.5rem 1rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    .indeed-pagination {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin: 2rem 0;
+    }
+    .indeed-pagination__btn {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 0.5rem;
+      border: 1px solid #ccc;
+      background: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .indeed-pagination__btn--current { background: #222; color: #fff; border-color: #222; }
+    .indeed-pagination__btn--next {
+      padding: 0 1rem;
+      height: 2.5rem;
+      border-radius: 0.5rem;
+      border: 1px solid #ccc;
+      background: #fff;
+      color: #004fcb;
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header class="indeed-header">
+    <div class="indeed-header__logo">indeed</div>
+    <span class="indeed-header__badge">Version 5: Node.js Express SSR + BEM</span>
+  </header>
+
+  <main class="indeed-main" id="jobsearch-Main">
+    <form class="indeed-search indeed-search--inline" action="/search" method="get">
+      <div class="indeed-search__group">
+        <span class="indeed-search__icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </span>
+        <input
+          class="indeed-search__control indeed-search__control--what"
+          type="text"
+          name="q"
+          placeholder="Job title, keywords, or company"
+          value="Unity Developer"
+        >
+      </div>
+
+      <div class="indeed-search__divider"></div>
+
+      <div class="indeed-search__group">
+        <span class="indeed-search__icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        </span>
+        <input
+          class="indeed-search__control indeed-search__control--where"
+          type="text"
+          name="l"
+          placeholder="City, state, zip code, or &quot;remote&quot;"
+          value="Remote"
+        >
+      </div>
+
+      <button type="submit" class="indeed-btn--primary indeed-search__submit">
+        Find jobs
+      </button>
+    </form>
+
+    <div class="indeed-filters">
+      <button class="indeed-pill indeed-pill--selected">Remote</button>
+      <button class="indeed-pill">Date posted</button>
+      <button class="indeed-pill">Pay: $120,000+ a year</button>
+      <button class="indeed-pill">Job type: Full-time</button>
+      <button class="indeed-pill">Location</button>
+      <button class="indeed-pill">Company</button>
+    </div>
+
+    <div class="indeed-results">
+      <!-- Card 1 -->
+      <article class="indeed-jobcard indeed-jobcard--featured">
+        <h2 class="indeed-jobcard__heading">
+          <a href="/ssr/job/unity-01" class="indeed-jobcard__link">
+            Unity Developer
+          </a>
+        </h2>
+        <div class="indeed-jobcard__company">Unity Technologies</div>
+        <div class="indeed-jobcard__location">Remote in San Francisco, CA</div>
+        <span class="indeed-jobcard__salary-tag">$140,000 - $185,000 a year</span>
+        <p class="indeed-jobcard__summary">
+          Build cross-platform game features and real-time graphics pipelines using C# and Unity Engine. 3+ years experience with shader development and optimization required.
+        </p>
+        <button class="indeed-btn--apply">Easily apply</button>
+      </article>
+
+      <!-- Card 2 -->
+      <article class="indeed-jobcard">
+        <h2 class="indeed-jobcard__heading">
+          <a href="/ssr/job/unity-02" class="indeed-jobcard__link">
+            Senior Unity 3D Developer
+          </a>
+        </h2>
+        <div class="indeed-jobcard__company">Electronic Arts</div>
+        <div class="indeed-jobcard__location">Austin, TX (Hybrid)</div>
+        <span class="indeed-jobcard__salary-tag">$150,000 - $195,000 a year</span>
+        <p class="indeed-jobcard__summary">
+          Lead technical architecture for mobile and PC multiplayer gameplay. Expertise with Unity Netcode and ECS DOTS framework.
+        </p>
+        <button class="indeed-btn--apply">Apply on company site</button>
+      </article>
+
+      <!-- Card 3 -->
+      <article class="indeed-jobcard">
+        <h2 class="indeed-jobcard__heading">
+          <a href="/ssr/job/unity-03" class="indeed-jobcard__link">
+            Gameplay Programmer (Unity)
+          </a>
+        </h2>
+        <div class="indeed-jobcard__company">Riot Games</div>
+        <div class="indeed-jobcard__location">Los Angeles, CA</div>
+        <span class="indeed-jobcard__salary-tag">$135,000 - $170,000 a year</span>
+        <p class="indeed-jobcard__summary">
+          Implement mechanics, combat feel, and core loops in Unity. Collaborate closely with designers, animators, and artists.
+        </p>
+        <button class="indeed-btn--apply">Easily apply</button>
+      </article>
+
+      <!-- Card 4 -->
+      <article class="indeed-jobcard">
+        <h2 class="indeed-jobcard__heading">
+          <a href="/ssr/job/unity-04" class="indeed-jobcard__link">
+            Lead Unity VR / AR Engineer
+          </a>
+        </h2>
+        <div class="indeed-jobcard__company">Meta</div>
+        <div class="indeed-jobcard__location">Menlo Park, CA (Remote)</div>
+        <span class="indeed-jobcard__salary-tag">$180,000 - $230,000 a year</span>
+        <p class="indeed-jobcard__summary">
+          Architect spatial experiences and immersive interaction models for next-gen XR hardware using Unity and OpenXR.
+        </p>
+        <button class="indeed-btn--apply">Easily apply</button>
+      </article>
+
+      <!-- Pagination -->
+      <div class="indeed-pagination">
+        <button class="indeed-pagination__btn indeed-pagination__btn--current">1</button>
+        <button class="indeed-pagination__btn">2</button>
+        <button class="indeed-pagination__btn">3</button>
+        <button class="indeed-pagination__btn--next">Next &gt;</button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

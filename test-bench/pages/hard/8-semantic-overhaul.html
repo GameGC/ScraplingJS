@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Developer Jobs | Indeed (Hard: Semantic Overhaul)</title>
+  <meta name="framework" content="Hard Mutation: Full Semantic HTML5 + ARIA">
+  <meta name="mutation-type" content="tag-swap + aria-heavy + list-semantics + no-div-soup">
+  <!--
+    Real pattern: accessibility-driven redesigns (2024–2026)
+    - Almost every div replaced with semantic tags
+    - Search becomes <search> + <form>
+    - Filters become <ul role="listbox">
+    - Job results become <ol> of <li><article>
+    - Buttons become <a role="button"> in places
+    - Classes minimized; reliance on roles + data attributes
+  -->
+  <style>
+    :root { --brand: #003a9b; --surface: #fff; --bg: #f0f2f5; --muted: #5f6368; }
+    body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); margin: 0; color: #202124; }
+    header[role="banner"] { background: var(--brand); color: #fff; padding: 12px 24px; display: flex; align-items: center; gap: 12px; }
+    header[role="banner"] .logo { font-weight: 800; font-size: 22px; }
+    header[role="banner"] .badge { font-size: 11px; background: rgba(255,255,255,.2); padding: 3px 8px; border-radius: 4px; }
+    main { max-width: 900px; margin: 20px auto; padding: 0 16px 48px; }
+    search { display: block; background: var(--surface); border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    search form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    search label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; font-size: 12px; font-weight: 600; color: var(--muted); }
+    search input { border: 1px solid #dadce0; border-radius: 8px; padding: 12px; font-size: 15px; }
+    search button[type="submit"] { background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 12px 24px; font-weight: 700; cursor: pointer; height: 44px; }
+    [role="listbox"] { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    [role="option"] { background: var(--surface); border: 1px solid #dadce0; border-radius: 20px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    [role="option"][aria-selected="true"] { background: #e8f0fe; border-color: var(--brand); color: var(--brand); }
+    .count { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    ol.results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    ol.results > li article { background: var(--surface); border: 1px solid #e0e0e0; border-radius: 12px; padding: 18px; }
+    ol.results h2 { margin: 0 0 4px; font-size: 17px; }
+    ol.results h2 a { color: var(--brand); text-decoration: none; font-weight: 700; }
+    .employer { font-weight: 600; }
+    .place { color: var(--muted); font-size: 13px; margin: 2px 0 8px; }
+    .comp { display: inline-block; background: #e6f4ea; color: #137333; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-bottom: 8px; }
+    .blurb { font-size: 13px; color: #3c4043; line-height: 1.4; margin: 0 0 12px; }
+    .actions { display: flex; gap: 8px; }
+    .actions a[role="button"], .actions button { display: inline-block; background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; font-size: 13px; text-decoration: none; cursor: pointer; }
+    nav[aria-label="Pagination"] { display: flex; justify-content: center; gap: 8px; margin-top: 24px; }
+    nav[aria-label="Pagination"] a, nav[aria-label="Pagination"] button {
+      background: var(--surface); border: 1px solid #dadce0; border-radius: 8px; padding: 10px 18px; font-weight: 600; text-decoration: none; color: #202124; cursor: pointer;
+    }
+    nav[aria-label="Pagination"] .next { background: var(--brand); color: #fff; border-color: var(--brand); }
+  </style>
+</head>
+<body>
+  <header role="banner">
+    <span class="logo">indeed</span>
+    <span class="badge">Hard #8 · Semantic Overhaul</span>
+  </header>
+
+  <main>
+    <search>
+      <form action="/jobs" method="get">
+        <label>
+          What
+          <input name="q" type="search" placeholder="Job title, keywords, or company" value="Unity Developer" />
+        </label>
+        <label>
+          Where
+          <input name="l" type="search" placeholder="City, state, zip code, or &quot;remote&quot;" value="Remote" />
+        </label>
+        <button type="submit">Find jobs</button>
+      </form>
+    </search>
+
+    <ul role="listbox" aria-label="Job filters">
+      <li role="option" aria-selected="true">Remote</li>
+      <li role="option" aria-selected="false">Date posted</li>
+      <li role="option" aria-selected="false">Pay: $120,000+ a year</li>
+      <li role="option" aria-selected="false">Job type: Full-time</li>
+    </ul>
+
+    <p class="count" role="status">Showing 1–10 of 287 jobs</p>
+
+    <ol class="results">
+      <li>
+        <article itemscope itemtype="https://schema.org/JobPosting">
+          <h2 itemprop="title"><a href="/viewjob?jk=unity-01" itemprop="url">Unity Developer</a></h2>
+          <div class="employer" itemprop="hiringOrganization" itemscope itemtype="https://schema.org/Organization">
+            <span itemprop="name">Unity Technologies</span>
+          </div>
+          <div class="place" itemprop="jobLocation">Remote in San Francisco, CA</div>
+          <div class="comp" itemprop="baseSalary">$140,000 - $185,000 a year</div>
+          <p class="blurb" itemprop="description">Build cross-platform game features and real-time graphics pipelines using C# and Unity Engine.</p>
+          <div class="actions">
+            <!-- button → anchor with role=button -->
+            <a href="/apply/unity-01" role="button">Easily apply</a>
+          </div>
+        </article>
+      </li>
+      <li>
+        <article>
+          <h2><a href="/viewjob?jk=unity-02">Senior Unity Engineer</a></h2>
+          <div class="employer">Epic Games</div>
+          <div class="place">Hybrid · Austin, TX</div>
+          <div class="comp">$160,000 - $210,000 a year</div>
+          <p class="blurb">Lead gameplay systems for next-gen multiplayer experiences.</p>
+          <div class="actions">
+            <a href="/apply/unity-02" role="button">Easily apply</a>
+          </div>
+        </article>
+      </li>
+    </ol>
+
+    <nav aria-label="Pagination">
+      <button type="button" disabled>Previous</button>
+      <a href="?start=10" class="next">Next</a>
+    </nav>
+  </main>
+</body>
+</html>

@@ -110,3 +110,9 @@ output/*/index.html
 docs/_build
 public/
 web/
+
+# Node / TypeScript
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+

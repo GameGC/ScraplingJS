@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Developer Jobs | Indeed (Hard: Text Drift + Decoys)</title>
+  <meta name="framework" content="Hard Mutation: Text Drift + Decoy Elements">
+  <meta name="mutation-type" content="copy-changes + similar-looking-decoys + class-churn">
+  <!--
+    Real patterns observed on job boards 2024–2026:
+    - Button copy: "Find jobs" → "Search jobs" / "Show results"
+    - Placeholder micro-copy tweaks
+    - Salary format changes ($140,000 - $185,000 a year → $140k–$185k/yr)
+    - Multiple near-identical cards (decoys) so similarity can pick the wrong one
+    - "Easily apply" → "Apply now" / "1-click apply"
+    - Extra similar buttons in header/footer
+  -->
+  <style>
+    body { font-family: Inter, system-ui, sans-serif; background: #fafafa; margin: 0; color: #111; }
+    .topbar { background: #0d47a1; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .topbar strong { font-size: 20px; }
+    .topbar .tag { background: #ff6f00; color: #fff; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .wrap { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+    .hero-search { background: #fff; border: 1px solid #e0e0e0; border-radius: 16px; padding: 20px; display: flex; gap: 10px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+    .hero-search input { flex: 1; border: 1px solid #ccc; border-radius: 10px; padding: 14px 16px; font-size: 15px; }
+    .hero-search button { background: #0d47a1; color: #fff; border: none; border-radius: 10px; padding: 0 28px; font-weight: 700; font-size: 15px; cursor: pointer; white-space: nowrap; }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+    .chip { background: #fff; border: 1px solid #bbb; border-radius: 20px; padding: 7px 14px; font-size: 13px; font-weight: 600; }
+    .chip.is-on { background: #e3f2fd; border-color: #0d47a1; color: #0d47a1; }
+    .card { background: #fff; border: 1px solid #e8e8e8; border-radius: 14px; padding: 18px 20px; margin-bottom: 12px; }
+    .card h3 { margin: 0 0 4px; font-size: 17px; }
+    .card h3 a { color: #0d47a1; text-decoration: none; font-weight: 700; }
+    .card .co { font-weight: 600; margin-bottom: 2px; }
+    .card .loc { color: #666; font-size: 13px; margin-bottom: 8px; }
+    .card .pay { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-bottom: 10px; }
+    .card .snip { color: #444; font-size: 13px; line-height: 1.4; margin: 0 0 12px; }
+    .card .actions { display: flex; gap: 8px; }
+    .card .actions button { border-radius: 8px; padding: 8px 16px; font-weight: 700; font-size: 13px; cursor: pointer; border: 1px solid #0d47a1; }
+    .card .actions .primary { background: #0d47a1; color: #fff; }
+    .card .actions .ghost { background: #fff; color: #0d47a1; }
+    .nav-bottom { text-align: center; margin: 28px 0; }
+    .nav-bottom button { background: #0d47a1; color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-weight: 700; cursor: pointer; }
+    /* Decoy styles – look similar but are wrong targets */
+    .decoy-bar { background: #fff3e0; border: 1px dashed #ff9800; padding: 12px; margin-bottom: 16px; border-radius: 8px; display: flex; gap: 10px; align-items: center; }
+    .decoy-bar input { flex: 1; padding: 10px; border: 1px solid #ffb74d; border-radius: 6px; }
+    .decoy-bar button { background: #ff9800; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <strong>indeed</strong>
+    <span class="tag">Hard #7 · Text Drift + Decoys</span>
+  </header>
+
+  <div class="wrap">
+    <!-- DECOY: similar search box that should NOT match the real targets -->
+    <div class="decoy-bar" aria-hidden="true">
+      <input type="text" placeholder="Search companies..." value="">
+      <input type="text" placeholder="Any location" value="">
+      <button type="button">Find companies</button>
+    </div>
+
+    <!-- Real search – copy slightly changed -->
+    <div class="hero-search" role="search">
+      <input
+        type="text"
+        name="q"
+        class="kw"
+        placeholder="Job title, keywords, or company name"
+        value="Unity Developer"
+      />
+      <input
+        type="text"
+        name="l"
+        class="loc"
+        placeholder="City, state, ZIP, or remote"
+        value="Remote"
+      />
+      <!-- Text drift: "Find jobs" → "Search jobs" -->
+      <button type="submit" class="go">Search jobs</button>
+    </div>
+
+    <div class="chips">
+      <!-- Still "Remote" but structure different -->
+      <button type="button" class="chip is-on">Remote</button>
+      <button type="button" class="chip">Date posted</button>
+      <button type="button" class="chip">$120k+</button>
+      <button type="button" class="chip">Full-time</button>
+    </div>
+
+    <!-- Multiple similar job cards = decoy risk -->
+    <div class="card" data-id="noise-01">
+      <h3><a href="/job/noise-01">Unity UI Designer</a></h3>
+      <div class="co">PixelForge Studios</div>
+      <div class="loc">Remote</div>
+      <div class="pay">$95,000 - $120,000 a year</div>
+      <p class="snip">Design interfaces for mobile games.</p>
+      <div class="actions">
+        <button type="button" class="primary">Apply now</button>
+        <button type="button" class="ghost">Save</button>
+      </div>
+    </div>
+
+    <!-- TARGET card – salary format changed, apply text changed -->
+    <div class="card" data-id="unity-01">
+      <h3><a href="/job/unity-01">Unity Developer</a></h3>
+      <div class="co">Unity Technologies</div>
+      <div class="loc">Remote in San Francisco, CA</div>
+      <!-- Text drift: salary format -->
+      <div class="pay">$140k–$185k / year</div>
+      <p class="snip">Build cross-platform game features and real-time graphics pipelines using C# and Unity Engine.</p>
+      <div class="actions">
+        <!-- Text drift: "Easily apply" → "1-click apply" -->
+        <button type="button" class="primary">1-click apply</button>
+        <button type="button" class="ghost">Save</button>
+      </div>
+    </div>
+
+    <div class="card" data-id="noise-02">
+      <h3><a href="/job/noise-02">Unity Developer (Contract)</a></h3>
+      <div class="co">GameLab Inc</div>
+      <div class="loc">Remote</div>
+      <div class="pay">$70 - $95 / hour</div>
+      <p class="snip">Short-term contract for multiplayer features.</p>
+      <div class="actions">
+        <button type="button" class="primary">Easily apply</button>
+        <button type="button" class="ghost">Save</button>
+      </div>
+    </div>
+
+    <div class="card" data-id="noise-03">
+      <h3><a href="/job/noise-03">Lead Unity Developer</a></h3>
+      <div class="co">Unity Technologies</div>
+      <div class="loc">San Francisco, CA (On-site)</div>
+      <div class="pay">$180,000 - $230,000 a year</div>
+      <p class="snip">Lead a team of engine programmers.</p>
+      <div class="actions">
+        <button type="button" class="primary">Easily apply</button>
+        <button type="button" class="ghost">Save</button>
+      </div>
+    </div>
+
+    <div class="nav-bottom">
+      <!-- Text drift: "Next >" → "Next page" -->
+      <button type="button" class="next">Next page</button>
+    </div>
+  </div>
+</body>
+</html>

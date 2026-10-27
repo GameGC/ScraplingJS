@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Developer Jobs | Indeed (Hard: Structural Refactor 2024→2025)</title>
+  <meta name="framework" content="Hard Mutation: Structural Refactor">
+  <meta name="mutation-type" content="deep-dom-restructure + semantic-tags + class-churn">
+  <!--
+    Real pattern: Indeed-style redesign 2023→2025
+    - Search box moved into <form role="search"> with fieldset
+    - Job cards became <article> with nested <header>/<footer>
+    - Filters became <ul role="listbox">
+    - Classes fully regenerated (no shared tokens)
+    - Depth increased by 2–4 levels
+    - Some wrappers added (sticky bar, results-meta)
+  -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f3f2f1; margin: 0; color: #2d2d2d; }
+    .gnav { background: #2557a7; color: #fff; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+    .gnav__brand { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; }
+    .gnav__chip { background: rgba(255,255,255,.15); padding: 4px 10px; border-radius: 999px; font-size: 12px; }
+    .shell { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+    .search-panel { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 16px; margin-bottom: 16px; }
+    .search-panel__form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field__label { font-size: 12px; font-weight: 600; color: #595959; text-transform: uppercase; letter-spacing: .03em; }
+    .field__control { border: 1px solid #d4d2d0; border-radius: 8px; padding: 12px 14px; font-size: 16px; outline: none; }
+    .field__control:focus { border-color: #2557a7; box-shadow: 0 0 0 3px rgba(37,87,167,.15); }
+    .cta-primary { background: #2557a7; color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-weight: 700; font-size: 16px; cursor: pointer; height: 48px; }
+    .cta-primary:hover { background: #164081; }
+    .filter-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .filter-strip__item { background: #fff; border: 1px solid #d4d2d0; border-radius: 999px; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .filter-strip__item[aria-pressed="true"] { background: #e8f0fe; border-color: #2557a7; color: #2557a7; }
+    .results-meta { font-size: 14px; color: #595959; margin-bottom: 12px; }
+    .job-list { display: flex; flex-direction: column; gap: 12px; }
+    .job-tile { background: #fff; border: 1px solid #e4e2e0; border-radius: 12px; padding: 20px; transition: box-shadow .15s; }
+    .job-tile:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    .job-tile__header { margin-bottom: 8px; }
+    .job-tile__title { font-size: 18px; font-weight: 700; color: #2557a7; text-decoration: none; }
+    .job-tile__title:hover { text-decoration: underline; }
+    .job-tile__employer { font-weight: 600; margin: 4px 0; }
+    .job-tile__locale { color: #595959; font-size: 14px; margin-bottom: 8px; }
+    .job-tile__comp { display: inline-block; background: #e8f5e9; color: #1b5e20; padding: 3px 10px; border-radius: 4px; font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+    .job-tile__blurb { color: #444; font-size: 14px; line-height: 1.45; margin: 0 0 14px; }
+    .job-tile__footer { display: flex; gap: 10px; align-items: center; }
+    .job-tile__apply { background: #2557a7; color: #fff; border: none; border-radius: 8px; padding: 8px 18px; font-weight: 700; cursor: pointer; }
+    .pager { display: flex; justify-content: center; gap: 8px; margin-top: 28px; }
+    .pager__btn { background: #fff; border: 1px solid #d4d2d0; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+    .pager__btn--next { background: #2557a7; color: #fff; border-color: #2557a7; }
+  </style>
+</head>
+<body>
+  <nav class="gnav" role="navigation">
+    <div class="gnav__brand">indeed</div>
+    <span class="gnav__chip">Hard #6 · Structural Refactor</span>
+  </nav>
+
+  <div class="shell">
+    <!-- Search completely restructured: form + fieldset + labels, new class tokens -->
+    <section class="search-panel" aria-label="Job search">
+      <form class="search-panel__form" role="search" action="/jobs" method="get">
+        <div class="field">
+          <label class="field__label" for="kw-input">What</label>
+          <input
+            id="kw-input"
+            class="field__control"
+            name="q"
+            type="text"
+            placeholder="Job title, keywords, or company"
+            value="Unity Developer"
+            autocomplete="off"
+          />
+        </div>
+        <div class="field">
+          <label class="field__label" for="loc-input">Where</label>
+          <input
+            id="loc-input"
+            class="field__control"
+            name="l"
+            type="text"
+            placeholder="City, state, zip code, or &quot;remote&quot;"
+            value="Remote"
+            autocomplete="off"
+          />
+        </div>
+        <button type="submit" class="cta-primary">Find jobs</button>
+      </form>
+    </section>
+
+    <!-- Filters: buttons → aria-pressed list pattern -->
+    <div class="filter-strip" role="group" aria-label="Filters">
+      <button type="button" class="filter-strip__item" aria-pressed="true">Remote</button>
+      <button type="button" class="filter-strip__item" aria-pressed="false">Date posted</button>
+      <button type="button" class="filter-strip__item" aria-pressed="false">Pay: $120,000+ a year</button>
+      <button type="button" class="filter-strip__item" aria-pressed="false">Job type: Full-time</button>
+      <button type="button" class="filter-strip__item" aria-pressed="false">Location</button>
+      <button type="button" class="filter-strip__item" aria-pressed="false">Company</button>
+    </div>
+
+    <p class="results-meta">Page 1 of 12 · 287 jobs</p>
+
+    <div class="job-list">
+      <!-- Job card: div → article, deeper nesting, new BEM -->
+      <article class="job-tile" data-jk="unity-01">
+        <header class="job-tile__header">
+          <h2 style="margin:0;font-size:inherit;font-weight:inherit;">
+            <a href="/viewjob?jk=unity-01" class="job-tile__title">Unity Developer</a>
+          </h2>
+          <div class="job-tile__employer">Unity Technologies</div>
+          <div class="job-tile__locale">Remote in San Francisco, CA</div>
+        </header>
+        <div class="job-tile__comp">$140,000 - $185,000 a year</div>
+        <p class="job-tile__blurb">Build cross-platform game features and real-time graphics pipelines using C# and Unity Engine.</p>
+        <footer class="job-tile__footer">
+          <button type="button" class="job-tile__apply">Easily apply</button>
+        </footer>
+      </article>
+
+      <article class="job-tile" data-jk="unity-02">
+        <header class="job-tile__header">
+          <h2 style="margin:0;font-size:inherit;font-weight:inherit;">
+            <a href="/viewjob?jk=unity-02" class="job-tile__title">Senior Unity Engineer</a>
+          </h2>
+          <div class="job-tile__employer">Epic Games</div>
+          <div class="job-tile__locale">Hybrid · Austin, TX</div>
+        </header>
+        <div class="job-tile__comp">$160,000 - $210,000 a year</div>
+        <p class="job-tile__blurb">Lead gameplay systems for next-gen multiplayer experiences.</p>
+        <footer class="job-tile__footer">
+          <button type="button" class="job-tile__apply">Easily apply</button>
+        </footer>
+      </article>
+    </div>
+
+    <nav class="pager" aria-label="Pagination">
+      <button type="button" class="pager__btn" disabled>‹ Prev</button>
+      <button type="button" class="pager__btn pager__btn--next">Next ›</button>
+    </nav>
+  </div>
+</body>
+</html>

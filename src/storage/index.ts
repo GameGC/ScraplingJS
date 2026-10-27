@@ -1,0 +1,6 @@
+export * from './base'
+export * from './memory'
+export * from './local-storage'
+export * from './indexeddb'
+export * from './chrome-storage'
+export * from './auto-storage'

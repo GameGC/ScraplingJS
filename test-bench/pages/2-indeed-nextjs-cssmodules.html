@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Developer Jobs, Employment | Indeed</title>
+  <meta name="framework" content="Next.js 15 (RSC) + CSS Modules">
+  <meta name="compiler-mode" content="production-css-modules-hash">
+  <style>
+    :root {
+      --primary: #004fcb;
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --text: #1a1a1a;
+      --muted: #666666;
+      --border: #dcdcdc;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin: 0; background-color: var(--bg); color: var(--text); }
+    
+    /* Next.js Compiled CSS Modules with Hash Names */
+    ._Nav_header__m4k9a {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    ._Nav_brand__p8x2l {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #003a9b;
+    }
+    ._Badge_framework__18x9k {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: #eef2ff;
+      color: #4338ca;
+      font-weight: 700;
+    }
+
+    ._SearchBox_searchContainer__a7f1e {
+      display: flex;
+      max-width: 56.25rem;
+      margin: 0 auto 1.5rem auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.25rem;
+      padding: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      align-items: center;
+    }
+    ._SearchBox_fieldGroup__3d9z1 {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      height: 3.5rem;
+    }
+    ._SearchBox_iconBox__m2k8x {
+      margin-right: 8px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+    }
+    ._SearchBox_inputKeyword__9d4x1 {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      font-weight: 500;
+      background: transparent;
+      color: var(--text);
+    }
+    ._SearchBox_dividerLine__5b2r8 {
+      width: 1px;
+      height: 2rem;
+      background: var(--border);
+      margin: 0 4px;
+    }
+    ._SearchBox_inputLocation__8k1p2 {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      font-weight: 500;
+      background: transparent;
+      color: var(--text);
+    }
+    ._SearchBox_btnFindJobs__2c8m4 {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 0.75rem;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 0.75rem 1.75rem;
+      min-height: 3rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    ._SearchBox_btnFindJobs__2c8m4:hover {
+      background: #003a9b;
+    }
+
+    ._Filters_clusterRow__8x1a9 {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: 56.25rem;
+      margin: 0 auto 1.5rem auto;
+    }
+    ._Filters_badgeItem__3c9d1 {
+      display: inline-flex;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 0.45rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    ._Filters_badgeItem__3c9d1.active {
+      background: #ecf2ff;
+      border-color: #004fcb;
+      color: #004fcb;
+    }
+
+    ._MainLayout_container__6n3x1 {
+      display: flex;
+      max-width: 75rem;
+      margin: 0 auto;
+      gap: 1.5rem;
+      padding: 0 1rem;
+    }
+    ._MainLayout_listCol__1m9y2 {
+      flex: 0 0 42rem;
+      max-width: 42rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    ._JobCard_cardRoot__7x2a1 {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.25rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    }
+    ._JobCard_cardRoot__7x2a1:hover {
+      border-color: var(--primary);
+    }
+    ._JobCard_titleHeading__4b7y1 {
+      margin: 0 0 0.35rem 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    ._JobCard_titleAnchor__9a8d2 {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    ._JobCard_companyLabel__5f1e9 {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    ._JobCard_locLabel__3k8m1 {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+    }
+    ._JobCard_salaryChip__2x7b4 {
+      display: inline-block;
+      background: #e6f4ff;
+      color: var(--primary);
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 0.375rem;
+      margin-bottom: 0.75rem;
+    }
+    ._JobCard_descParagraph__8n4j2 {
+      font-size: 0.875rem;
+      color: #444;
+      line-height: 1.45;
+      margin-bottom: 0.75rem;
+    }
+    ._JobCard_actionSubmit__1d7m5 {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 0.5rem;
+      padding: 0.5rem 1rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    ._Pagination_bar__7g2e1 {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin: 2rem 0;
+    }
+    ._Pagination_active__9b1c3 {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 0.5rem;
+      background: #1a1a1a;
+      color: #fff;
+      border: none;
+      font-weight: 700;
+    }
+    ._Pagination_btn__4m8k2 {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 0.5rem;
+      background: #fff;
+      color: #1a1a1a;
+      border: 1px solid var(--border);
+      font-weight: 600;
+    }
+    ._Pagination_next__1q7x4 {
+      padding: 0 1rem;
+      height: 2.5rem;
+      border-radius: 0.5rem;
+      background: #fff;
+      color: var(--primary);
+      border: 1px solid var(--border);
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <nav class="_Nav_header__m4k9a">
+    <div class="_Nav_brand__p8x2l">indeed</div>
+    <span class="_Badge_framework__18x9k">Version 2: Next.js 15 (RSC) + CSS Modules</span>
+  </nav>
+
+  <main id="jobsearch-Main">
+    <!-- Next.js Form with CSS Module classes -->
+    <form class="_SearchBox_searchContainer__a7f1e" action="/jobs" method="GET">
+      <div class="_SearchBox_fieldGroup__3d9z1">
+        <span class="_SearchBox_iconBox__m2k8x">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </span>
+        <input
+          name="q"
+          class="_SearchBox_inputKeyword__9d4x1"
+          type="search"
+          placeholder="Job title, keywords, or company"
+          value="Unity Developer"
+        >
+      </div>
+
+      <div class="_SearchBox_dividerLine__5b2r8"></div>
+
+      <div class="_SearchBox_fieldGroup__3d9z1">
+        <span class="_SearchBox_iconBox__m2k8x">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        </span>
+        <input
+          name="l"
+          class="_SearchBox_inputLocation__8k1p2"
+          type="search"
+          placeholder="City, state, zip code, or &quot;remote&quot;"
+          value="Remote"
+        >
+      </div>
+
+      <button type="submit" class="_SearchBox_btnFindJobs__2c8m4">
+        Find jobs
+      </button>
+    </form>
+
+    <!-- Filter cluster -->
+    <div class="_Filters_clusterRow__8x1a9">
+      <button type="button" class="_Filters_badgeItem__3c9d1 active">Remote</button>
+      <button type="button" class="_Filters_badgeItem__3c9d1">Date posted</button>
+      <button type="button" class="_Filters_badgeItem__3c9d1">Pay: $120,000+ a year</button>
+      <button type="button" class="_Filters_badgeItem__3c9d1">Job type: Full-time</button>
+      <button type="button" class="_Filters_badgeItem__3c9d1">Location</button>
+      <button type="button" class="_Filters_badgeItem__3c9d1">Company</button>
+    </div>
+
+    <!-- Job Cards -->
+    <div class="_MainLayout_container__6n3x1">
+      <div class="_MainLayout_listCol__1m9y2">
+        
+        <!-- Job 1 -->
+        <section class="_JobCard_cardRoot__7x2a1" data-job="unity-01">
+          <h3 class="_JobCard_titleHeading__4b7y1">
+            <a href="/jobs/unity-01" class="_JobCard_titleAnchor__9a8d2">
+              Unity Developer
+            </a>
+          </h3>
+          <div class="_JobCard_companyLabel__5f1e9">Unity Technologies</div>
+          <div class="_JobCard_locLabel__3k8m1">Remote in San Francisco, CA</div>
+          <div class="_JobCard_salaryChip__2x7b4">$140,000 - $185,000 a year</div>
+          <p class="_JobCard_descParagraph__8n4j2">
+            Build cross-platform game features and real-time graphics pipelines using C# and Unity Engine. 3+ years experience with shader development and optimization required.
+          </p>
+          <button type="button" class="_JobCard_actionSubmit__1d7m5">Easily apply</button>
+        </section>
+
+        <!-- Job 2 -->
+        <section class="_JobCard_cardRoot__7x2a1" data-job="unity-02">
+          <h3 class="_JobCard_titleHeading__4b7y1">
+            <a href="/jobs/unity-02" class="_JobCard_titleAnchor__9a8d2">
+              Senior Unity 3D Developer
+            </a>
+          </h3>
+          <div class="_JobCard_companyLabel__5f1e9">Electronic Arts</div>
+          <div class="_JobCard_locLabel__3k8m1">Austin, TX (Hybrid)</div>
+          <div class="_JobCard_salaryChip__2x7b4">$150,000 - $195,000 a year</div>
+          <p class="_JobCard_descParagraph__8n4j2">
+            Lead technical architecture for mobile and PC multiplayer gameplay. Expertise with Unity Netcode and ECS DOTS framework.
+          </p>
+          <button type="button" class="_JobCard_actionSubmit__1d7m5">Apply on company site</button>
+        </section>
+
+        <!-- Job 3 -->
+        <section class="_JobCard_cardRoot__7x2a1" data-job="unity-03">
+          <h3 class="_JobCard_titleHeading__4b7y1">
+            <a href="/jobs/unity-03" class="_JobCard_titleAnchor__9a8d2">
+              Gameplay Programmer (Unity)
+            </a>
+          </h3>
+          <div class="_JobCard_companyLabel__5f1e9">Riot Games</div>
+          <div class="_JobCard_locLabel__3k8m1">Los Angeles, CA</div>
+          <div class="_JobCard_salaryChip__2x7b4">$135,000 - $170,000 a year</div>
+          <p class="_JobCard_descParagraph__8n4j2">
+            Implement mechanics, combat feel, and core loops in Unity. Collaborate closely with designers, animators, and artists.
+          </p>
+          <button type="button" class="_JobCard_actionSubmit__1d7m5">Easily apply</button>
+        </section>
+
+        <!-- Job 4 -->
+        <section class="_JobCard_cardRoot__7x2a1" data-job="unity-04">
+          <h3 class="_JobCard_titleHeading__4b7y1">
+            <a href="/jobs/unity-04" class="_JobCard_titleAnchor__9a8d2">
+              Lead Unity VR / AR Engineer
+            </a>
+          </h3>
+          <div class="_JobCard_companyLabel__5f1e9">Meta</div>
+          <div class="_JobCard_locLabel__3k8m1">Menlo Park, CA (Remote)</div>
+          <div class="_JobCard_salaryChip__2x7b4">$180,000 - $230,000 a year</div>
+          <p class="_JobCard_descParagraph__8n4j2">
+            Architect spatial experiences and immersive interaction models for next-gen XR hardware using Unity and OpenXR.
+          </p>
+          <button type="button" class="_JobCard_actionSubmit__1d7m5">Easily apply</button>
+        </section>
+
+        <!-- Pagination -->
+        <div class="_Pagination_bar__7g2e1">
+          <button class="_Pagination_active__9b1c3">1</button>
+          <button class="_Pagination_btn__4m8k2">2</button>
+          <button class="_Pagination_btn__4m8k2">3</button>
+          <button class="_Pagination_next__1q7x4">Next &gt;</button>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</body>
+</html>
