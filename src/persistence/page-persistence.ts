@@ -92,6 +92,47 @@ function normalizeTextQuery(query: string): string {
   return trimmed
 }
 
+export function parseQueryArguments<T extends HTMLElement = HTMLElement>(
+  selectorOrSelectors: string | readonly string[],
+  arg1?: Element | Document | ElementFilter<T> | string,
+  arg2?: ElementFilter<T> | string,
+  arg3?: string,
+): {
+  root?: Element | Document
+  filter?: ElementFilter<T>
+  identifier: string
+} {
+  const defaultKey =
+    typeof selectorOrSelectors === 'string'
+      ? selectorOrSelectors
+      : (selectorOrSelectors[0] ?? 'default')
+
+  let root: Element | Document | undefined
+  let filter: ElementFilter<T> | undefined
+  let identifier = defaultKey
+
+  if (typeof arg1 === 'function') {
+    filter = arg1 as ElementFilter<T>
+    if (typeof arg2 === 'string') {
+      identifier = arg2
+    }
+  } else if (typeof arg1 === 'object' && arg1 !== null) {
+    root = arg1 as Element | Document
+    if (typeof arg2 === 'function') {
+      filter = arg2 as ElementFilter<T>
+      if (typeof arg3 === 'string') {
+        identifier = arg3
+      }
+    } else if (typeof arg2 === 'string') {
+      identifier = arg2
+    }
+  } else if (typeof arg1 === 'string') {
+    identifier = arg1
+  }
+
+  return { root, filter, identifier }
+}
+
 export class PagePersistenceManager {
   readonly doc: Document
   readonly url: string
@@ -203,13 +244,7 @@ export class PagePersistenceManager {
   }
 
   captureElement(element: Element, identifier?: string): CapturedElementInfo {
-    const sel = new Selector({
-      root: element,
-      url: this.url,
-      adaptive: true,
-      pierceShadow: true,
-      _storage: this.storage,
-    })
+    const sel = this.createRootSelector(element)
     const cssSelector = sel.generateCssSelector
     const fullCssSelector = sel.generateFullCssSelector
     const xpathSelector = sel.generateXpathSelector
@@ -388,7 +423,7 @@ export class PagePersistenceManager {
     filterOrKey?: ElementFilter<T> | string,
     key?: string,
   ): T | null {
-    const parsed = this.parseFindArgs<T>(
+    const parsed = parseQueryArguments<T>(
       selectorOrSelectors,
       rootOrFilterOrKey,
       filterOrKey,
@@ -411,7 +446,7 @@ export class PagePersistenceManager {
     filterOrKey?: ElementFilter<T> | string,
     key?: string,
   ): T[] {
-    const parsed = this.parseFindArgs<T>(
+    const parsed = parseQueryArguments<T>(
       selectorOrSelectors,
       rootOrFilterOrKey,
       filterOrKey,
@@ -428,47 +463,6 @@ export class PagePersistenceManager {
     return results
       .map((s) => s.rawNode as T)
       .filter((el): el is T => Boolean(el))
-  }
-
-  private parseFindArgs<T extends HTMLElement = HTMLElement>(
-    selectorOrSelectors: string | readonly string[],
-    arg1?: Element | Document | ElementFilter<T> | string,
-    arg2?: ElementFilter<T> | string,
-    arg3?: string,
-  ): {
-    root?: Element | Document
-    filter?: ElementFilter<T>
-    identifier: string
-  } {
-    const defaultKey =
-      typeof selectorOrSelectors === 'string'
-        ? selectorOrSelectors
-        : (selectorOrSelectors[0] ?? 'default')
-
-    let root: Element | Document | undefined
-    let filter: ElementFilter<T> | undefined
-    let identifier = defaultKey
-
-    if (typeof arg1 === 'function') {
-      filter = arg1 as ElementFilter<T>
-      if (typeof arg2 === 'string') {
-        identifier = arg2
-      }
-    } else if (typeof arg1 === 'object' && arg1 !== null) {
-      root = arg1 as Element | Document
-      if (typeof arg2 === 'function') {
-        filter = arg2 as ElementFilter<T>
-        if (typeof arg3 === 'string') {
-          identifier = arg3
-        }
-      } else if (typeof arg2 === 'string') {
-        identifier = arg2
-      }
-    } else if (typeof arg1 === 'string') {
-      identifier = arg1
-    }
-
-    return { root, filter, identifier }
   }
 
   relocateWithScore<T extends HTMLElement = HTMLElement>(
@@ -520,13 +514,7 @@ export class PagePersistenceManager {
     if (bestElement && bestScore >= percentage) {
       return {
         element: bestElement,
-        selector: new Selector({
-          root: bestElement,
-          url: this.url,
-          adaptive: true,
-          pierceShadow: true,
-          _storage: this.storage,
-        }),
+        selector: this.createRootSelector(bestElement),
         score: bestScore,
       }
     }
@@ -626,19 +614,37 @@ export class PagePersistenceManager {
       if (isPrimary || isAlike) {
         matched.push({
           element: item.element,
-          selector: new Selector({
-            root: item.element,
-            url: this.url,
-            adaptive: true,
-            pierceShadow: true,
-            _storage: this.storage,
-          }),
+          selector: this.createRootSelector(item.element),
           score: item.score,
         })
       }
     }
 
     return matched
+  }
+
+  private observeDeepTree(
+    obs: MutationObserver,
+    observedRoots: WeakSet<Node>,
+  ): void {
+    if (!observedRoots.has(this.doc.documentElement)) {
+      observedRoots.add(this.doc.documentElement)
+      obs.observe(this.doc.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      })
+    }
+    for (const sr of collectDeepShadowRoots(this.doc.documentElement)) {
+      if (!observedRoots.has(sr)) {
+        observedRoots.add(sr)
+        obs.observe(sr, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+        })
+      }
+    }
   }
 
   watch(
@@ -662,28 +668,6 @@ export class PagePersistenceManager {
     let timer: ReturnType<typeof setTimeout> | null = null
     let stopped = false
     const observedRoots = new WeakSet<Node>()
-
-    const syncShadowObservers = (obs: MutationObserver) => {
-      if (!observedRoots.has(this.doc.documentElement)) {
-        observedRoots.add(this.doc.documentElement)
-        obs.observe(this.doc.documentElement, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-        })
-      }
-      const shadowRoots = collectDeepShadowRoots(this.doc.documentElement)
-      for (const sr of shadowRoots) {
-        if (!observedRoots.has(sr)) {
-          observedRoots.add(sr)
-          obs.observe(sr, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-          })
-        }
-      }
-    }
 
     const evaluateNow = () => {
       if (stopped) return
@@ -756,12 +740,12 @@ export class PagePersistenceManager {
       }
       timer = setTimeout(() => {
         timer = null
-        syncShadowObservers(observer)
+        this.observeDeepTree(observer, observedRoots)
         evaluateNow()
       }, this.debounceMs)
     })
 
-    syncShadowObservers(observer)
+    this.observeDeepTree(observer, observedRoots)
     evaluateNow()
 
     const stop = () => {
@@ -818,6 +802,22 @@ export class PagePersistenceManager {
     pollMs = 200,
   ): Promise<R | null> {
     return new Promise<R | null>((resolve, reject) => {
+      try {
+        const immediate = condition()
+        if (immediate) {
+          resolve(immediate)
+          return
+        }
+      } catch (err) {
+        reject(err)
+        return
+      }
+
+      if (timeoutMs <= 0) {
+        resolve(null)
+        return
+      }
+
       let settled = false
       const observedRoots = new WeakSet<Node>()
 
@@ -840,31 +840,11 @@ export class PagePersistenceManager {
         return false
       }
 
-      const syncObservers = (obs: MutationObserver) => {
-        if (!observedRoots.has(this.doc.documentElement)) {
-          observedRoots.add(this.doc.documentElement)
-          obs.observe(this.doc.documentElement, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-          })
-        }
-        for (const sr of collectDeepShadowRoots(this.doc.documentElement)) {
-          if (!observedRoots.has(sr)) {
-            observedRoots.add(sr)
-            obs.observe(sr, {
-              childList: true,
-              subtree: true,
-              attributes: true,
-            })
-          }
-        }
-      }
-
       const observer = new MutationObserver(() => {
         if (settled) return
-        syncObservers(observer)
-        checkNow()
+        if (!checkNow()) {
+          this.observeDeepTree(observer, observedRoots)
+        }
       })
 
       const intervalId = setInterval(() => {
@@ -886,8 +866,7 @@ export class PagePersistenceManager {
       }
 
       this.activeStoppers.add(cleanup)
-      syncObservers(observer)
-      checkNow()
+      this.observeDeepTree(observer, observedRoots)
     })
   }
 

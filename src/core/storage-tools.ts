@@ -1,6 +1,6 @@
 import type { BoundingRectInfo, ElementFingerprint } from '../types'
-import { getDeepParentElement } from '../snapshot/shadow-dom'
-import { cleanText } from './utils'
+import { getDeepParentElement } from './shadow-dom'
+import { cleanText } from './text-utils'
 
 const SEMANTIC_ATTR_NAMES = [
   'data-testid',
@@ -91,7 +91,7 @@ export class StorageTools {
     return StorageTools.getElementPath(element)
   }
 
-  static elementToDict(element: Element): ElementFingerprint {
+  static elementToDict(element: Element, includeRect = true): ElementFingerprint {
     const parent = getDeepParentElement(element)
     const directText = getElementDirectText(element).trim()
     const fullText = cleanText(element.textContent ?? '').slice(0, 400)
@@ -184,7 +184,7 @@ export class StorageTools {
       result.children = children
     }
 
-    if (typeof element.getBoundingClientRect === 'function') {
+    if (includeRect && typeof element.getBoundingClientRect === 'function') {
       try {
         const r = element.getBoundingClientRect()
         if (r && (r.width > 0 || r.height > 0)) {
@@ -202,8 +202,8 @@ export class StorageTools {
     return result
   }
 
-  static element_to_dict(element: Element): ElementFingerprint {
-    return StorageTools.elementToDict(element)
+  static element_to_dict(element: Element, includeRect = true): ElementFingerprint {
+    return StorageTools.elementToDict(element, includeRect)
   }
 }
 

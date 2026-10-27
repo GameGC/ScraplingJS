@@ -11,9 +11,12 @@ import {
   PagePersistenceManager,
   type PagePersistenceManagerOptions,
   type WaitForElementOptions,
+  parseQueryArguments,
 } from './page-persistence'
 import {
   isElementVisible,
+  isInputElement,
+  isTextAreaElement,
   setNativeInputValue,
   setNativeCheckboxValue,
 } from '../core/utils'
@@ -174,45 +177,6 @@ export interface EasyScrapling {
   configure(options: PagePersistenceManagerOptions): EasyScrapling
   readonly page: Selector
   readonly manager: PagePersistenceManager
-}
-
-function parseQueryArguments<T extends HTMLElement = HTMLElement>(
-  query: string | readonly string[],
-  arg1?: Element | Document | ElementFilter<T> | string,
-  arg2?: ElementFilter<T> | string,
-  arg3?: string,
-): {
-  root?: Element | Document
-  filter?: ElementFilter<T>
-  identifier: string
-} {
-  const defaultKey =
-    typeof query === 'string' ? query : (query[0] ?? 'default')
-
-  let root: Element | Document | undefined
-  let filter: ElementFilter<T> | undefined
-  let identifier = defaultKey
-
-  if (typeof arg1 === 'function') {
-    filter = arg1 as ElementFilter<T>
-    if (typeof arg2 === 'string') {
-      identifier = arg2
-    }
-  } else if (typeof arg1 === 'object' && arg1 !== null) {
-    root = arg1 as Element | Document
-    if (typeof arg2 === 'function') {
-      filter = arg2 as ElementFilter<T>
-      if (typeof arg3 === 'string') {
-        identifier = arg3
-      }
-    } else if (typeof arg2 === 'string') {
-      identifier = arg2
-    }
-  } else if (typeof arg1 === 'string') {
-    identifier = arg1
-  }
-
-  return { root, filter, identifier }
 }
 
 export function createScrapling(
@@ -470,10 +434,7 @@ export function createScrapling(
   ): boolean => {
     const el = getManager().find(query, rootOrFilterOrKey, filterOrKey, key)
     if (!el) return false
-    if (
-      !(typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement) &&
-      !(typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement)
-    ) {
+    if (!isInputElement(el) && !isTextAreaElement(el)) {
       return false
     }
     el.focus()
@@ -490,7 +451,7 @@ export function createScrapling(
   ): boolean => {
     const el = getManager().find(query, rootOrFilterOrKey, filterOrKey, key)
     if (!el) return false
-    if (!(typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement)) {
+    if (!isInputElement(el)) {
       return false
     }
     if (el.checked !== checked) {

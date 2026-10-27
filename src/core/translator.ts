@@ -1,4 +1,4 @@
-import { SelectorSyntaxError } from './custom-types'
+import { SelectorSyntaxError } from './errors'
 
 export function xpathLiteral(value: string): string {
   if (!value.includes("'")) {

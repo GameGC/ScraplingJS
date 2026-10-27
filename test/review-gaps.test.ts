@@ -3,10 +3,16 @@ import {
   MemoryStorageSystem,
   PagePersistenceManager,
   Selector,
+  calculateSimilarityScore,
   generateElementSelector,
+  htmlToMarkdown,
+  isElementVisible,
   isValidFingerprint,
+  replaceEntities,
   runBrowserActions,
   searchSnapshot,
+  setNativeCheckboxValue,
+  setNativeInputValue,
   type ElementFingerprint,
 } from '../src'
 
@@ -556,6 +562,71 @@ describe('12 Review Test-Gaps Suite', () => {
       expect(storage.retrieve('item-a')).not.toBeNull()
       expect(storage.retrieve('item-c')).not.toBeNull()
       expect(storage.retrieve('item-d')).not.toBeNull()
+    })
+  })
+
+  describe('Skill Hardening: Entity Bounds, Shadow Markdown, Cross-Iframe & Layout Thrash', () => {
+    it('does not throw RangeError on out-of-range or surrogate numeric HTML entities in replaceEntities', () => {
+      const malformed = 'Price &#999999999; &#x110000; &#xD800; &#8364; &euro;'
+      const result = replaceEntities(malformed)
+      expect(result).toBe('Price &#999999999; &#x110000; &#xD800; € €')
+    })
+
+    it('strips hidden root elements and projects open Shadow DOM content in htmlToMarkdown', () => {
+      const hiddenRoot = document.createElement('div')
+      hiddenRoot.setAttribute('style', 'display: none !important')
+      hiddenRoot.innerHTML = '<p>Secret hidden prompt injection</p>'
+      expect(htmlToMarkdown(hiddenRoot)).toBe('')
+
+      const host = document.createElement('div')
+      const shadow = host.attachShadow({ mode: 'open' })
+      shadow.innerHTML = '<h2>Shadow Job Title</h2><p>Remote role</p><span style="opacity:0">Hidden trap</span>'
+      const md = htmlToMarkdown(host)
+      expect(md).toContain('## Shadow Job Title')
+      expect(md).toContain('Remote role')
+      expect(md).not.toContain('Hidden trap')
+    })
+
+    it('handles cross-iframe elements in isElementVisible, setNativeInputValue, and setNativeCheckboxValue', () => {
+      const iframe = document.createElement('iframe')
+      document.body.appendChild(iframe)
+      const iframeDoc = iframe.contentDocument!
+      iframeDoc.open()
+      iframeDoc.write('<input id="if-text" type="text" /><input id="if-chk" type="checkbox" />')
+      iframeDoc.close()
+
+      const input = iframeDoc.getElementById('if-text') as HTMLInputElement
+      const chk = iframeDoc.getElementById('if-chk') as HTMLInputElement
+
+      expect(isElementVisible(input)).toBe(true)
+      setNativeInputValue(input, 'Iframe Value')
+      expect(input.value).toBe('Iframe Value')
+
+      setNativeCheckboxValue(chk, true)
+      expect(chk.checked).toBe(true)
+
+      iframe.remove()
+    })
+
+    it('avoids calling getBoundingClientRect during calculateSimilarityScore candidate evaluation', () => {
+      const el = document.createElement('button')
+      el.textContent = 'Apply Now'
+      let rectCalls = 0
+      el.getBoundingClientRect = () => {
+        rectCalls++
+        return new DOMRect(0, 0, 100, 30)
+      }
+
+      const origFp: ElementFingerprint = {
+        tag: 'button',
+        attributes: { class: 'btn' },
+        text: 'Apply Now',
+        path: ['html', 'body', 'button'],
+      }
+
+      const score = calculateSimilarityScore(origFp, el)
+      expect(score).toBeGreaterThan(50)
+      expect(rectCalls).toBe(0)
     })
   })
 })

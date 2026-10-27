@@ -55,8 +55,30 @@ export function sanitizeTextForAi(text: string): string {
   return text.replace(ZWC_PATTERN, '').replace(CONTROL_CHARS_PATTERN, '')
 }
 
+function cloneWithShadowProjection(node: Node, doc: Document): Node {
+  if (node.nodeType !== 1) {
+    return node.cloneNode(true)
+  }
+  const el = node as Element
+  const copy = el.cloneNode(false) as Element
+  if (el.shadowRoot) {
+    for (let i = 0; i < el.shadowRoot.childNodes.length; i++) {
+      copy.appendChild(cloneWithShadowProjection(el.shadowRoot.childNodes[i], doc))
+    }
+  }
+  for (let i = 0; i < el.childNodes.length; i++) {
+    copy.appendChild(cloneWithShadowProjection(el.childNodes[i], doc))
+  }
+  return copy
+}
+
 export function sanitizeElementForAi(root: Element): Element {
-  const clone = root.cloneNode(true) as Element
+  const doc = root.ownerDocument ?? document
+  const clone = cloneWithShadowProjection(root, doc) as Element
+  if (isHiddenElement(clone)) {
+    clone.innerHTML = ''
+    return clone
+  }
   const noiseTags = clone.querySelectorAll('script, style, noscript, iframe, svg')
   for (const node of Array.from(noiseTags)) {
     node.parentNode?.removeChild(node)
