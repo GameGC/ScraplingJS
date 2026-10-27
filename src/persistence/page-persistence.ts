@@ -569,21 +569,32 @@ export class PagePersistenceManager {
       }
     }
 
-    const minCutoff = Math.max(percentage - 10, bestScore - 18)
+    const minCutoff = Math.max(25, percentage - 10)
     const matched: Array<{ element: Element; selector: Selector; score: number }> = []
 
     for (const item of scored) {
       const isPrimary = item.element === bestElement
-      const isAlike =
-        item.score >= minCutoff &&
+      const isSameParentAlike =
+        item.element.parentElement === bestElement.parentElement &&
         areElementsAlike(
           bestElement,
           primaryAttrs,
           item.element,
           ['href', 'src', 'id', 'data-jk'],
-          0.5,
+          0.8,
           false,
         )
+      const isAlike =
+        isSameParentAlike ||
+        (item.score >= minCutoff &&
+          areElementsAlike(
+            bestElement,
+            primaryAttrs,
+            item.element,
+            ['href', 'src', 'id', 'data-jk'],
+            0.5,
+            false,
+          ))
       if (isPrimary || isAlike) {
         matched.push({
           element: item.element,
