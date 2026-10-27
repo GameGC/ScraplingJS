@@ -1,40 +1,133 @@
 import type { BrowserAction, SelectorWaitState, StorageSystem } from '../types'
 import { Selector } from '../parser/selector'
+import { isElementVisible, setNativeInputValue, setNativeCheckboxValue } from '../core/utils'
 
 export function validateActions(actions: BrowserAction[]): void {
   for (let i = 0; i < actions.length; i++) {
     const index = i + 1
     const action = actions[i]
-    if (action.type === 'move' || action.type === 'click') {
-      const hasTarget = action.target !== undefined && action.target !== null
-      const hasX = action.x !== undefined && action.x !== null
-      const hasY = action.y !== undefined && action.y !== null
-      if (hasTarget === hasX || hasX !== hasY) {
-        throw new Error(
-          `Action ${index} (${action.type}) needs 'target' or both 'x' and 'y', not both.`,
-        )
+    switch (action.type) {
+      case 'move':
+      case 'click': {
+        const hasTarget = action.target !== undefined && action.target !== null && action.target !== ''
+        const hasX = action.x !== undefined && action.x !== null
+        const hasY = action.y !== undefined && action.y !== null
+        if (hasTarget === hasX || hasX !== hasY) {
+          throw new Error(
+            `Action ${index} (${action.type}) needs 'target' or both 'x' and 'y', not both.`,
+          )
+        }
+        if (action.timeout !== undefined && (typeof action.timeout !== 'number' || action.timeout < 0)) {
+          throw new Error(`Action ${index} (${action.type}) 'timeout' must be a non-negative number.`)
+        }
+        break
+      }
+      case 'wheel': {
+        if (action.delta_x !== undefined && typeof action.delta_x !== 'number') {
+          throw new Error(`Action ${index} (wheel) 'delta_x' must be a number.`)
+        }
+        if (action.delta_y !== undefined && typeof action.delta_y !== 'number') {
+          throw new Error(`Action ${index} (wheel) 'delta_y' must be a number.`)
+        }
+        break
+      }
+      case 'textbox': {
+        if (!action.target) {
+          throw new Error(`Action ${index} (textbox) needs 'target'.`)
+        }
+        if (typeof action.value !== 'string') {
+          throw new Error(`Action ${index} (textbox) needs string 'value'.`)
+        }
+        if (action.timeout !== undefined && (typeof action.timeout !== 'number' || action.timeout < 0)) {
+          throw new Error(`Action ${index} (textbox) 'timeout' must be a non-negative number.`)
+        }
+        break
+      }
+      case 'checkbox': {
+        if (!action.target) {
+          throw new Error(`Action ${index} (checkbox) needs 'target'.`)
+        }
+        if (typeof action.value !== 'boolean') {
+          throw new Error(`Action ${index} (checkbox) needs boolean 'value'.`)
+        }
+        if (action.timeout !== undefined && (typeof action.timeout !== 'number' || action.timeout < 0)) {
+          throw new Error(`Action ${index} (checkbox) 'timeout' must be a non-negative number.`)
+        }
+        break
+      }
+      case 'radio': {
+        if (!action.target) {
+          throw new Error(`Action ${index} (radio) needs 'target'.`)
+        }
+        if (action.value !== true) {
+          throw new Error(`Action ${index} (radio) 'value' must be true.`)
+        }
+        if (action.timeout !== undefined && (typeof action.timeout !== 'number' || action.timeout < 0)) {
+          throw new Error(`Action ${index} (radio) 'timeout' must be a non-negative number.`)
+        }
+        break
+      }
+      case 'combobox': {
+        if (!action.target) {
+          throw new Error(`Action ${index} (combobox) needs 'target'.`)
+        }
+        if (typeof action.value !== 'string' && !Array.isArray(action.value)) {
+          throw new Error(`Action ${index} (combobox) 'value' must be a string or array of strings.`)
+        }
+        if (action.timeout !== undefined && (typeof action.timeout !== 'number' || action.timeout < 0)) {
+          throw new Error(`Action ${index} (combobox) 'timeout' must be a non-negative number.`)
+        }
+        break
+      }
+      case 'press_key': {
+        if (typeof action.key !== 'string' || action.key.length === 0) {
+          throw new Error(`Action ${index} (press_key) needs non-empty 'key'.`)
+        }
+        break
+      }
+      case 'wait_time': {
+        if (typeof action.milliseconds !== 'number' || action.milliseconds < 0 || Number.isNaN(action.milliseconds)) {
+          throw new Error(`Action ${index} (wait_time) 'milliseconds' must be a non-negative number.`)
+        }
+        break
+      }
+      case 'wait_element': {
+        if (!action.target) {
+          throw new Error(`Action ${index} (wait_element) needs 'target'.`)
+        }
+        if (
+          action.state !== undefined &&
+          action.state !== 'attached' &&
+          action.state !== 'detached' &&
+          action.state !== 'visible' &&
+          action.state !== 'hidden'
+        ) {
+          throw new Error(`Action ${index} (wait_element) invalid 'state'.`)
+        }
+        if (action.timeout !== undefined && (typeof action.timeout !== 'number' || action.timeout < 0)) {
+          throw new Error(`Action ${index} (wait_element) 'timeout' must be a non-negative number.`)
+        }
+        break
+      }
+      case 'wait_load': {
+        if (
+          action.state !== 'domcontentloaded' &&
+          action.state !== 'load' &&
+          action.state !== 'networkidle'
+        ) {
+          throw new Error(`Action ${index} (wait_load) invalid 'state'.`)
+        }
+        if (action.timeout !== undefined && (typeof action.timeout !== 'number' || action.timeout < 0)) {
+          throw new Error(`Action ${index} (wait_load) 'timeout' must be a non-negative number.`)
+        }
+        break
+      }
+      default: {
+        const _exhaustiveCheck: never = action
+        throw new Error(`Unsupported action: ${JSON.stringify(_exhaustiveCheck)}`)
       }
     }
-    if (
-      (action.type === 'textbox' ||
-        action.type === 'checkbox' ||
-        action.type === 'radio' ||
-        action.type === 'combobox') &&
-      (action.target === undefined || action.target === null || action.target === '')
-    ) {
-      throw new Error(`Action ${index} (${action.type}) needs 'target'.`)
-    }
   }
-}
-
-function isElementVisible(el: Element): boolean {
-  const htmlEl = el as HTMLElement
-  const style = window.getComputedStyle(htmlEl)
-  if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
-    return false
-  }
-  const rect = htmlEl.getBoundingClientRect()
-  return rect.width > 0 && rect.height > 0
 }
 
 function resolveTargetElement(
@@ -57,6 +150,113 @@ function resolveTargetElement(
   return res.first?.rawNode ?? null
 }
 
+async function waitForDocumentLoad(
+  doc: Document,
+  state: 'domcontentloaded' | 'load' | 'networkidle',
+  timeout = 30000,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) {
+    throw signal.reason ?? new Error('Aborted')
+  }
+
+  const isDclReached = doc.readyState === 'interactive' || doc.readyState === 'complete'
+  const isLoadReached = doc.readyState === 'complete'
+
+  if (state === 'domcontentloaded' && isDclReached) {
+    return
+  }
+  if (state === 'load' && isLoadReached) {
+    return
+  }
+  if (state === 'networkidle' && isLoadReached) {
+    if (timeout <= 0) return
+    await new Promise<void>((resolve, reject) => {
+      const waitMs = Math.min(500, timeout)
+      const timer = setTimeout(resolve, waitMs)
+      if (signal) {
+        const onAbort = () => {
+          clearTimeout(timer)
+          reject(signal.reason ?? new Error('Aborted'))
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+      }
+    })
+    return
+  }
+
+  if (timeout <= 0) {
+    throw new Error(`Timeout waiting for load state '${state}'`)
+  }
+
+  const win = doc.defaultView ?? (typeof window !== 'undefined' ? window : null)
+
+  await new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const cleanup = () => {
+      if (timer !== null) {
+        clearTimeout(timer)
+        timer = null
+      }
+      win?.removeEventListener('load', onLoad)
+      win?.removeEventListener('DOMContentLoaded', onDcl)
+      doc.removeEventListener('DOMContentLoaded', onDcl)
+      signal?.removeEventListener('abort', onAbort)
+    }
+
+    const onLoad = () => {
+      cleanup()
+      if (state === 'networkidle') {
+        const idleTimer = setTimeout(resolve, Math.min(500, timeout))
+        if (signal) {
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(idleTimer)
+              reject(signal.reason ?? new Error('Aborted'))
+            },
+            { once: true },
+          )
+        }
+      } else {
+        resolve()
+      }
+    }
+
+    const onDcl = () => {
+      if (state === 'domcontentloaded') {
+        cleanup()
+        resolve()
+      }
+    }
+
+    const onAbort = () => {
+      cleanup()
+      reject(signal?.reason ?? new Error('Aborted'))
+    }
+
+    if (timeout > 0 && timeout < Infinity) {
+      timer = setTimeout(() => {
+        cleanup()
+        reject(new Error(`Timeout waiting for load state '${state}'`))
+      }, timeout)
+    }
+
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+
+    if (state === 'domcontentloaded') {
+      doc.addEventListener('DOMContentLoaded', onDcl, { once: true })
+      win?.addEventListener('DOMContentLoaded', onDcl, { once: true })
+      win?.addEventListener('load', onDcl, { once: true })
+    } else {
+      win?.addEventListener('load', onLoad, { once: true })
+    }
+  })
+}
+
 async function waitForElementCondition(
   doc: Document,
   target: string,
@@ -64,18 +264,46 @@ async function waitForElementCondition(
   timeout = 30000,
   adaptive = false,
   storage?: StorageSystem,
+  signal?: AbortSignal,
 ): Promise<Element | null> {
+  if (signal?.aborted) {
+    throw signal.reason ?? new Error('Aborted')
+  }
+
+  const check = (): { met: true; el: Element | null } | { met: false } => {
+    const el = resolveTargetElement(doc, target, adaptive, storage)
+    if (state === 'attached' && el) return { met: true, el }
+    if (state === 'detached' && !el) return { met: true, el: null }
+    if (state === 'visible' && el && isElementVisible(el)) return { met: true, el }
+    if (state === 'hidden' && (!el || !isElementVisible(el))) return { met: true, el }
+    return { met: false }
+  }
+
+  const initial = check()
+  if (initial.met) {
+    return initial.el
+  }
+
+  if (timeout <= 0) {
+    throw new Error(`Timeout waiting for '${target}' to reach state '${state}'`)
+  }
+
   const start = Date.now()
   while (true) {
-    const el = resolveTargetElement(doc, target, adaptive, storage)
-    if (state === 'attached' && el) return el
-    if (state === 'detached' && !el) return null
-    if (state === 'visible' && el && isElementVisible(el)) return el
-    if (state === 'hidden' && (!el || !isElementVisible(el))) return el
-    if (timeout > 0 && Date.now() - start >= timeout) {
-      throw new Error(`Timeout waiting for '${target}' to reach state '${state}'`)
+    if (signal?.aborted) {
+      throw signal.reason ?? new Error('Aborted')
     }
     await new Promise((r) => setTimeout(r, 25))
+    if (signal?.aborted) {
+      throw signal.reason ?? new Error('Aborted')
+    }
+    const current = check()
+    if (current.met) {
+      return current.el
+    }
+    if (Date.now() - start >= timeout) {
+      throw new Error(`Timeout waiting for '${target}' to reach state '${state}'`)
+    }
   }
 }
 
@@ -84,6 +312,7 @@ export interface RunBrowserActionsOptions {
   adaptive?: boolean
   storage?: StorageSystem
   slowly?: boolean
+  signal?: AbortSignal
 }
 
 export async function runBrowserActions(
@@ -99,14 +328,41 @@ export async function runBrowserActions(
   for (let i = 0; i < actions.length; i++) {
     const index = i + 1
     const action = actions[i]
+    const actionSignal =
+      'signal' in action && action.signal instanceof AbortSignal
+        ? action.signal
+        : options?.signal
+
     try {
+      if (actionSignal?.aborted) {
+        throw actionSignal.reason ?? new Error('Aborted')
+      }
       if (slowly && i > 0) {
         await new Promise((r) => setTimeout(r, 100))
       }
       switch (action.type) {
-        case 'wait_time':
-          await new Promise((r) => setTimeout(r, action.milliseconds))
+        case 'wait_time': {
+          if (action.milliseconds <= 0) {
+            break
+          }
+          await new Promise<void>((resolve, reject) => {
+            let onAbort: (() => void) | undefined
+            const timer = setTimeout(() => {
+              if (actionSignal && onAbort) {
+                actionSignal.removeEventListener('abort', onAbort)
+              }
+              resolve()
+            }, action.milliseconds)
+            if (actionSignal) {
+              onAbort = () => {
+                clearTimeout(timer)
+                reject(actionSignal.reason ?? new Error('Aborted'))
+              }
+              actionSignal.addEventListener('abort', onAbort, { once: true })
+            }
+          })
           break
+        }
         case 'wait_element':
           await waitForElementCondition(
             doc,
@@ -115,20 +371,25 @@ export async function runBrowserActions(
             action.timeout ?? 30000,
             adaptive,
             storage,
+            actionSignal,
           )
           break
         case 'wait_load':
-          if (doc.readyState !== 'complete') {
-            await new Promise<void>((resolve) => {
-              window.addEventListener('load', () => resolve(), { once: true })
-            })
-          }
+          await waitForDocumentLoad(
+            doc,
+            action.state ?? 'load',
+            action.timeout ?? 30000,
+            actionSignal,
+          )
           break
-        case 'wheel':
-          window.scrollBy(action.delta_x ?? 0, action.delta_y ?? 0)
+        case 'wheel': {
+          const win = doc.defaultView ?? (typeof window !== 'undefined' ? window : null)
+          win?.scrollBy(action.delta_x ?? 0, action.delta_y ?? 0)
           break
+        }
         case 'press_key': {
-          const active = (doc.activeElement as HTMLElement) ?? doc.body
+          const active =
+            doc.activeElement instanceof HTMLElement ? doc.activeElement : doc.body
           active.dispatchEvent(
             new KeyboardEvent('keydown', { key: action.key, bubbles: true }),
           )
@@ -155,7 +416,11 @@ export async function runBrowserActions(
             } else {
               const count = action.click_count ?? 1
               for (let c = 0; c < count; c++) {
-                ;(targetEl as HTMLElement).click?.()
+                if (targetEl instanceof HTMLElement) {
+                  targetEl.click()
+                } else {
+                  targetEl.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+                }
               }
               if (count === 2) {
                 targetEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
@@ -165,68 +430,81 @@ export async function runBrowserActions(
           break
         }
         case 'textbox': {
-          const el = resolveTargetElement(
+          const targetEl = resolveTargetElement(
             doc,
             action.target,
             adaptive,
             storage,
-          ) as HTMLInputElement | HTMLTextAreaElement | null
-          if (!el) {
+          )
+          if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
           }
-          el.focus?.()
-          if (action.clear ?? true) {
-            el.value = action.value
-          } else {
-            el.value = (el.value ?? '') + action.value
+          if (
+            !(targetEl instanceof HTMLInputElement) &&
+            !(targetEl instanceof HTMLTextAreaElement)
+          ) {
+            throw new TypeError(
+              `Target '${action.target}' is not an HTMLInputElement or HTMLTextAreaElement`,
+            )
           }
-          el.dispatchEvent(new Event('input', { bubbles: true }))
-          el.dispatchEvent(new Event('change', { bubbles: true }))
+          targetEl.focus?.()
+          const nextValue =
+            (action.clear ?? true) ? action.value : (targetEl.value ?? '') + action.value
+          setNativeInputValue(targetEl, nextValue)
           break
         }
         case 'checkbox':
         case 'radio': {
-          const el = resolveTargetElement(
+          const targetEl = resolveTargetElement(
             doc,
             action.target,
             adaptive,
             storage,
-          ) as HTMLInputElement | null
-          if (!el) {
+          )
+          if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
           }
-          if (el.checked !== action.value) {
-            el.checked = action.value
-            el.dispatchEvent(new Event('input', { bubbles: true }))
-            el.dispatchEvent(new Event('change', { bubbles: true }))
+          if (!(targetEl instanceof HTMLInputElement)) {
+            throw new TypeError(`Target '${action.target}' is not an HTMLInputElement`)
+          }
+          if (targetEl.checked !== action.value) {
+            setNativeCheckboxValue(targetEl, action.value)
           }
           break
         }
         case 'combobox': {
-          const el = resolveTargetElement(
+          const targetEl = resolveTargetElement(
             doc,
             action.target,
             adaptive,
             storage,
-          ) as HTMLSelectElement | null
-          if (!el) {
+          )
+          if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
+          }
+          if (!(targetEl instanceof HTMLSelectElement)) {
+            throw new TypeError(`Target '${action.target}' is not an HTMLSelectElement`)
           }
           const labels = Array.isArray(action.value) ? action.value : [action.value]
           const labelSet = new Set(labels)
-          for (const opt of Array.from(el.options)) {
+          for (const opt of Array.from(targetEl.options)) {
             opt.selected =
               labelSet.has(opt.label) ||
               labelSet.has(opt.text.trim()) ||
               labelSet.has(opt.value)
           }
-          el.dispatchEvent(new Event('input', { bubbles: true }))
-          el.dispatchEvent(new Event('change', { bubbles: true }))
+          targetEl.dispatchEvent(new Event('input', { bubbles: true }))
+          targetEl.dispatchEvent(new Event('change', { bubbles: true }))
           break
         }
+        default: {
+          const _exhaustiveCheck: never = action
+          throw new Error(`Unsupported action: ${JSON.stringify(_exhaustiveCheck)}`)
+        }
       }
-    } catch (err: any) {
-      throw new Error(`Action ${index} (${action.type}) failed: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(`Action ${index} (${action.type}) failed: ${message}`)
     }
   }
 }

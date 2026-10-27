@@ -11,28 +11,13 @@ import {
   PagePersistenceManager,
   type PagePersistenceManagerOptions,
   type WaitForElementOptions,
-  isElementVisible,
 } from './page-persistence'
+import {
+  isElementVisible,
+  setNativeInputValue,
+  setNativeCheckboxValue,
+} from '../core/utils'
 
-function setNativeInputValue(
-  el: HTMLInputElement | HTMLTextAreaElement,
-  value: string,
-): void {
-  const proto =
-    typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement
-      ? HTMLTextAreaElement.prototype
-      : typeof HTMLInputElement !== 'undefined'
-        ? HTMLInputElement.prototype
-        : null
-  const descriptor = proto
-    ? Object.getOwnPropertyDescriptor(proto, 'value')
-    : undefined
-  if (descriptor && typeof descriptor.set === 'function') {
-    descriptor.set.call(el, value)
-  } else {
-    el.value = value
-  }
-}
 
 export interface ScopedScrapling {
   <T extends HTMLElement = HTMLElement>(
@@ -145,7 +130,7 @@ export interface EasyScrapling {
     key: string,
     percentage?: number,
     root?: Element | Document,
-    filter?: ElementFilter<any>,
+    filter?: ElementFilter<HTMLElement>,
   ): HTMLElement | null
   attr(
     query: string | readonly string[],
@@ -186,6 +171,7 @@ export interface EasyScrapling {
     filterOrKey?: ElementFilter<HTMLElement> | string,
     key?: string,
   ): string[]
+  configure(options: PagePersistenceManagerOptions): EasyScrapling
   readonly page: Selector
   readonly manager: PagePersistenceManager
 }
@@ -232,11 +218,12 @@ function parseQueryArguments<T extends HTMLElement = HTMLElement>(
 export function createScrapling(
   options?: PagePersistenceManagerOptions,
 ): EasyScrapling {
+  let currentOptions: PagePersistenceManagerOptions | undefined = options
   let instance: PagePersistenceManager | null = null
 
   const getManager = (): PagePersistenceManager => {
     if (!instance) {
-      instance = new PagePersistenceManager(options)
+      instance = new PagePersistenceManager(currentOptions)
     }
     return instance
   }
@@ -249,6 +236,15 @@ export function createScrapling(
   ): T | null => {
     return getManager().find<T>(query, rootOrFilterOrKey, filterOrKey, key)
   }) as EasyScrapling
+
+  fn.configure = (newOptions: PagePersistenceManagerOptions): EasyScrapling => {
+    currentOptions = { ...(currentOptions ?? {}), ...newOptions }
+    if (instance) {
+      void instance.destroy()
+      instance = null
+    }
+    return fn
+  }
 
   fn.all = <T extends HTMLElement = HTMLElement>(
     query: string | readonly string[],
@@ -433,7 +429,7 @@ export function createScrapling(
     key: string,
     percentage?: number,
     root?: Element | Document,
-    filter?: ElementFilter<any>,
+    filter?: ElementFilter<HTMLElement>,
   ): HTMLElement | null => {
     return getManager().restore(key, percentage, root, filter)
   }
@@ -449,7 +445,7 @@ export function createScrapling(
     if (!el) return null
     const attrVal = el.getAttribute(attributeName)
     if (attrVal !== null) return attrVal
-    const propVal = (el as any)[attributeName]
+    const propVal = Reflect.get(el, attributeName)
     return typeof propVal === 'string' && propVal.length > 0 ? propVal : null
   }
 
@@ -472,15 +468,16 @@ export function createScrapling(
     filterOrKey?: ElementFilter<HTMLElement> | string,
     key?: string,
   ): boolean => {
-    const el = getManager().find(query, rootOrFilterOrKey, filterOrKey, key) as
-      | HTMLInputElement
-      | HTMLTextAreaElement
-      | null
+    const el = getManager().find(query, rootOrFilterOrKey, filterOrKey, key)
     if (!el) return false
+    if (
+      !(typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement) &&
+      !(typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement)
+    ) {
+      return false
+    }
     el.focus()
     setNativeInputValue(el, value)
-    el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value }))
-    el.dispatchEvent(new Event('change', { bubbles: true }))
     return true
   }
 
@@ -491,22 +488,13 @@ export function createScrapling(
     filterOrKey?: ElementFilter<HTMLElement> | string,
     key?: string,
   ): boolean => {
-    const el = getManager().find(query, rootOrFilterOrKey, filterOrKey, key) as
-      | HTMLInputElement
-      | null
+    const el = getManager().find(query, rootOrFilterOrKey, filterOrKey, key)
     if (!el) return false
+    if (!(typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement)) {
+      return false
+    }
     if (el.checked !== checked) {
-      const descriptor =
-        typeof HTMLInputElement !== 'undefined'
-          ? Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked')
-          : undefined
-      if (descriptor && typeof descriptor.set === 'function') {
-        descriptor.set.call(el, checked)
-      } else {
-        el.checked = checked
-      }
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-      el.dispatchEvent(new Event('change', { bubbles: true }))
+      setNativeCheckboxValue(el, checked)
     }
     return true
   }

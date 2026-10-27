@@ -24,7 +24,7 @@ export class Selectors extends Array<Selector> {
     identifierOrOptions: string | AdaptiveQueryOptions = '',
     autoSave = false,
     percentage = 40,
-    variables?: Record<string, any>,
+    variables?: Record<string, string | number>,
   ): Selectors {
     let identifier = ''
     let isAutoSave = autoSave
@@ -51,21 +51,24 @@ export class Selectors extends Array<Selector> {
     identifierOrOptions: string | AdaptiveQueryOptions = '',
     autoSave = false,
     percentage = 40,
+    variables?: Record<string, string | number>,
   ): Selectors {
     let identifier = ''
     let isAutoSave = autoSave
     let minPercentage = percentage
+    let vars = variables
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
       identifier = identifierOrOptions.identifier ?? ''
       isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? false
       minPercentage = identifierOrOptions.percentage ?? 40
+      vars = identifierOrOptions.variables
     } else {
       identifier = identifierOrOptions
     }
 
     const nested = Array.from(this, (n) =>
-      n.css(selector, identifier || selector, false, isAutoSave, minPercentage),
+      n.css(selector, identifier || selector, false, isAutoSave, minPercentage, vars),
     )
     return new Selectors(flatten(nested))
   }
@@ -82,13 +85,13 @@ export class Selectors extends Array<Selector> {
     return new TextHandlers(flatten(nested))
   }
 
-  reFirst(
+  reFirst<T = null>(
     regex: string | RegExp,
-    defaultValue: any = null,
+    defaultValue: T = null as unknown as T,
     optionsOrReplaceEntities?: RegexExtractOptions | boolean,
     cleanMatch = false,
     caseSensitive = true,
-  ): TextHandler | any {
+  ): TextHandler | T {
     for (const n of this) {
       const matches = n.re(regex, optionsOrReplaceEntities, cleanMatch, caseSensitive)
       if (matches.length > 0) {
@@ -98,13 +101,13 @@ export class Selectors extends Array<Selector> {
     return defaultValue
   }
 
-  re_first(
+  re_first<T = null>(
     regex: string | RegExp,
-    defaultValue: any = null,
+    defaultValue: T = null as unknown as T,
     optionsOrReplaceEntities?: RegexExtractOptions | boolean,
     cleanMatch = false,
     caseSensitive = true,
-  ): TextHandler | any {
+  ): TextHandler | T {
     return this.reFirst(regex, defaultValue, optionsOrReplaceEntities, cleanMatch, caseSensitive)
   }
 
@@ -119,12 +122,12 @@ export class Selectors extends Array<Selector> {
 
   override filter(
     predicate: (value: Selector, index: number, array: Selector[]) => unknown,
-    thisArg?: any,
+    thisArg?: unknown,
   ): Selectors {
     return new Selectors(super.filter(predicate, thisArg))
   }
 
-  get(defaultValue: any = null): TextHandler | any {
+  get<T = null>(defaultValue: T = null as unknown as T): TextHandler | T {
     return this.length > 0 ? this[0].get() : defaultValue
   }
 
@@ -136,11 +139,11 @@ export class Selectors extends Array<Selector> {
     return this.getall()
   }
 
-  extractFirst(defaultValue: any = null): TextHandler | any {
+  extractFirst<T = null>(defaultValue: T = null as unknown as T): TextHandler | T {
     return this.get(defaultValue)
   }
 
-  extract_first(defaultValue: any = null): TextHandler | any {
+  extract_first<T = null>(defaultValue: T = null as unknown as T): TextHandler | T {
     return this.get(defaultValue)
   }
 

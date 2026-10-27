@@ -28,11 +28,27 @@ export interface StorageSystem {
   save(element: Element | ElementFingerprint, identifier: string): void | Promise<void>
   retrieve(identifier: string): ElementFingerprint | null | Promise<ElementFingerprint | null>
   close?(): void | Promise<void>
+  hydrate?(): void | Promise<void>
+  flush?(): void | Promise<void>
 }
 
 export interface SelectorOptions {
   content?: string | Uint8Array
-  root?: Element | Document | DocumentFragment | ShadowRoot | Node
+  root?:
+    | Element
+    | Document
+    | DocumentFragment
+    | ShadowRoot
+    | Node
+    | {
+        kind: 'element'
+        element: Element
+      }
+    | {
+        kind: 'text'
+        textValue: string
+        parentElement?: Element | null
+      }
   url?: string
   adaptiveDomain?: string
   adaptive_domain?: string
@@ -44,10 +60,10 @@ export interface SelectorOptions {
   adaptive?: boolean
   pierceShadow?: boolean
   pierce_shadow?: boolean
-  storage?: StorageSystem | (new (options?: any) => StorageSystem)
+  storage?: StorageSystem | (new (options?: Record<string, unknown>) => StorageSystem)
   _storage?: StorageSystem
-  storageArgs?: Record<string, any>
-  storage_args?: Record<string, any>
+  storageArgs?: Record<string, unknown>
+  storage_args?: Record<string, unknown>
 }
 
 export interface AdaptiveQueryOptions {
@@ -56,8 +72,15 @@ export interface AdaptiveQueryOptions {
   autoSave?: boolean
   auto_save?: boolean
   percentage?: number
-  variables?: Record<string, string | number | boolean>
-  [key: string]: any
+  variables?: Record<string, string | number>
+  queryEngine?: string
+  minConfidence?: number
+  strategy?: 'hybrid' | 'css-first' | 'xpath-first'
+  storage?: StorageSystem
+  save?: (key: string, fingerprint: ElementFingerprint) => void | Promise<void>
+  read?: (key: string) => ElementFingerprint | null | Promise<ElementFingerprint | null>
+  onError?: (error: unknown, context: { operation: 'save' | 'read' | 'hydrate'; key?: string }) => void
+  storageCapacity?: number
 }
 
 export interface GetAllTextOptions {

@@ -19,7 +19,7 @@ import { generateElementSelector } from '../core/mixins'
 import { areElementsAlike, calculateSimilarityScore } from '../core/similarity'
 import { StorageTools, getElementDirectText } from '../core/storage-tools'
 import { cssToXpath, splitCssSelectors, xpathLiteral } from '../core/translator'
-import { cleanSpaces, escapeCssString, flatten } from '../core/utils'
+import { cleanSpaces, escapeCssString, escapeRegExpChars } from '../core/utils'
 import {
   collectDeepElements,
   collectDeepShadowRoots,
@@ -98,12 +98,9 @@ function formatPrettyHtml(node: Element, indent = 0): string {
   return `${pad}<${tag}${attrs}>\n${childLines.join('\n')}\n${pad}</${tag}>`
 }
 
-export interface InternalNodeWrapper {
-  kind: 'element' | 'text'
-  element?: Element
-  textValue?: string
-  parentElement?: Element | null
-}
+export type InternalNodeWrapper =
+  | { kind: 'element'; element: Element }
+  | { kind: 'text'; textValue: string; parentElement?: Element | null }
 
 export class Selector {
   readonly url: string
@@ -118,7 +115,6 @@ export class Selector {
   private _textCache: TextHandler | null = null
   private _attributesCache: AttributesHandler | null = null
   private _tagCache: string | null = null
-  readonly [key: string]: any
 
   constructor(
     contentOrOptions?: string | Uint8Array | Element | Document | SelectorOptions,
@@ -174,7 +170,7 @@ export class Selector {
       this._wrapper = { kind: 'element', element: rootElement }
       this._rawBody = opts.content
     } else {
-      const rootArg = opts.root as any
+      const rootArg = opts.root
       if (
         rootArg &&
         typeof rootArg === 'object' &&
@@ -196,26 +192,27 @@ export class Selector {
         this._wrapper = { kind: 'element', element: rootArg.host }
       } else if (typeof Element !== 'undefined' && rootArg instanceof Element) {
         this._wrapper = { kind: 'element', element: rootArg }
-      } else if (rootArg && typeof rootArg.nodeType === 'number') {
-        if (rootArg.nodeType === 3) {
+      } else if (rootArg && typeof (rootArg as Node).nodeType === 'number') {
+        const node = rootArg as Node
+        if (node.nodeType === 3) {
           this._wrapper = {
             kind: 'text',
-            textValue: rootArg.nodeValue ?? '',
-            parentElement: getDeepParentElement(rootArg),
+            textValue: node.nodeValue ?? '',
+            parentElement: getDeepParentElement(node),
           }
-        } else if (rootArg.nodeType === 2) {
+        } else if (node.nodeType === 2) {
           this._wrapper = {
             kind: 'text',
-            textValue: rootArg.value ?? rootArg.nodeValue ?? '',
-            parentElement: (rootArg as Attr).ownerElement ?? null,
+            textValue: (node as Attr).value ?? node.nodeValue ?? '',
+            parentElement: (node as Attr).ownerElement ?? null,
           }
-        } else if (rootArg.nodeType === 9 && rootArg.documentElement) {
-          this._wrapper = { kind: 'element', element: rootArg.documentElement }
+        } else if (node.nodeType === 9 && (node as Document).documentElement) {
+          this._wrapper = { kind: 'element', element: (node as Document).documentElement }
         } else {
           this._wrapper = {
             kind: 'text',
-            textValue: String(rootArg.textContent ?? ''),
-            parentElement: getDeepParentElement(rootArg),
+            textValue: String(node.textContent ?? ''),
+            parentElement: getDeepParentElement(node),
           }
         }
       } else {
@@ -234,7 +231,7 @@ export class Selector {
       if (opts._storage) {
         this._storage = opts._storage
       } else if (opts.storage !== undefined) {
-        const storageArg = opts.storage as any
+        const storageArg = opts.storage
         const storageArgs = opts.storageArgs ??
           opts.storage_args ?? {
             storage_file: ':default:',
@@ -243,8 +240,10 @@ export class Selector {
         if (
           typeof storageArg === 'object' &&
           storageArg !== null &&
-          typeof storageArg.save === 'function' &&
-          typeof storageArg.retrieve === 'function'
+          'save' in storageArg &&
+          typeof (storageArg as StorageSystem).save === 'function' &&
+          'retrieve' in storageArg &&
+          typeof (storageArg as StorageSystem).retrieve === 'function'
         ) {
           this._storage = storageArg as StorageSystem
         } else if (
@@ -255,7 +254,8 @@ export class Selector {
             (typeof storageArg.prototype?.save === 'function' &&
               typeof storageArg.prototype?.retrieve === 'function'))
         ) {
-          this._storage = new storageArg(storageArgs)
+          const StorageCtor = storageArg as new (options?: unknown) => StorageSystem
+          this._storage = new StorageCtor(storageArgs)
         } else {
           throw new Error(
             'Storage system must be inherited from class `StorageSystemMixin` or implement save/retrieve',
@@ -304,8 +304,8 @@ export class Selector {
     return new Proxy(this, {
       get(target, prop, receiver) {
         if (Reflect.has(target, prop) || typeof prop === 'symbol') {
-          const value: any = Reflect.get(target, prop, receiver)
-          return typeof value === 'function' ? value.bind(target) : value
+          const value = Reflect.get(target, prop, receiver) as unknown
+          return typeof value === 'function' ? (value as Function).bind(target) : value
         }
         if (typeof prop === 'string') {
           if (target.isTextNode) {
@@ -331,13 +331,13 @@ export class Selector {
   }
 
   get rawNode(): Element | null {
-    return this._wrapper.kind === 'element' ? (this._wrapper.element ?? null) : null
+    return this._wrapper.kind === 'element' ? this._wrapper.element : null
   }
 
   get _root(): Element | string {
     return this._wrapper.kind === 'element'
-      ? this._wrapper.element!
-      : (this._wrapper.textValue ?? '')
+      ? this._wrapper.element
+      : this._wrapper.textValue
   }
 
   get domElement(): HTMLElement | null {
@@ -346,7 +346,7 @@ export class Selector {
 
   private convertElement(node: Element | InternalNodeWrapper): Selector {
     return new Selector({
-      root: node as any,
+      root: node,
       url: this.url,
       encoding: this.encoding,
       adaptive: this._adaptiveEnabled,
@@ -366,47 +366,47 @@ export class Selector {
   }
 
   get tag(): string {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return '#text'
     }
     if (!this._tagCache) {
-      this._tagCache = this._wrapper.element!.tagName.toLowerCase()
+      this._tagCache = this._wrapper.element.tagName.toLowerCase()
     }
     return this._tagCache
   }
 
   get text(): TextHandler {
-    if (this.isTextNode) {
-      return new TextHandler(this._wrapper.textValue ?? '')
+    if (this._wrapper.kind === 'text') {
+      return new TextHandler(this._wrapper.textValue)
     }
     if (this._textCache === null) {
-      this._textCache = new TextHandler(getElementDirectText(this._wrapper.element!))
+      this._textCache = new TextHandler(getElementDirectText(this._wrapper.element))
     }
     return this._textCache
   }
 
   get attrib(): AttributesHandler {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return new AttributesHandler({})
     }
     if (!this._attributesCache) {
-      this._attributesCache = new AttributesHandler(this._wrapper.element!.attributes)
+      this._attributesCache = new AttributesHandler(this._wrapper.element.attributes)
     }
     return this._attributesCache
   }
 
   attr(name: string): TextHandler | undefined {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       throw new TypeError('Text nodes do not have attributes')
     }
     return this.attrib.get(name, undefined)
   }
 
   get htmlContent(): TextHandler {
-    if (this.isTextNode) {
-      return new TextHandler(this._wrapper.textValue ?? '')
+    if (this._wrapper.kind === 'text') {
+      return new TextHandler(this._wrapper.textValue)
     }
-    return new TextHandler(this._wrapper.element!.outerHTML.trim())
+    return new TextHandler(this._wrapper.element.outerHTML.trim())
   }
 
   get html_content(): TextHandler {
@@ -414,24 +414,24 @@ export class Selector {
   }
 
   get body(): string | Uint8Array {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return ''
     }
     return this._rawBody
   }
 
   prettify(): TextHandler {
-    if (this.isTextNode) {
-      return new TextHandler(this._wrapper.textValue ?? '')
+    if (this._wrapper.kind === 'text') {
+      return new TextHandler(this._wrapper.textValue)
     }
-    return new TextHandler(formatPrettyHtml(this._wrapper.element!))
+    return new TextHandler(formatPrettyHtml(this._wrapper.element))
   }
 
   hasClass(className: string): boolean {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return false
     }
-    return this._wrapper.element!.classList.contains(className)
+    return this._wrapper.element.classList.contains(className)
   }
 
   has_class(className: string): boolean {
@@ -444,8 +444,8 @@ export class Selector {
     ignoreTags: readonly string[] = ['script', 'style'],
     validValues = true,
   ): TextHandler {
-    if (this.isTextNode) {
-      return new TextHandler(this._wrapper.textValue ?? '')
+    if (this._wrapper.kind === 'text') {
+      return new TextHandler(this._wrapper.textValue)
     }
 
     let separator = '\n'
@@ -478,7 +478,7 @@ export class Selector {
       }
     }
 
-    const rootEl = this._wrapper.element!
+    const rootEl = this._wrapper.element
     const ignoredTagSet = new Set(ignoredTagsList.map((t) => t.toLowerCase()))
     const allStrings: string[] = []
     const pierce = this._pierceShadow
@@ -535,22 +535,22 @@ export class Selector {
   }
 
   get parent(): Selector | null {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return this._wrapper.parentElement
         ? this.convertElement(this._wrapper.parentElement)
         : null
     }
     const parentEl = this._pierceShadow
-      ? getDeepParentElement(this._wrapper.element!)
-      : this._wrapper.element!.parentElement
+      ? getDeepParentElement(this._wrapper.element)
+      : this._wrapper.element.parentElement
     return parentEl ? this.convertElement(parentEl) : null
   }
 
   get belowElements(): Selectors {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
-    const descendants = collectDeepElements(this._wrapper.element!, this._pierceShadow, false)
+    const descendants = collectDeepElements(this._wrapper.element, this._pierceShadow, false)
     return this.convertElements(descendants)
   }
 
@@ -559,10 +559,10 @@ export class Selector {
   }
 
   get children(): Selectors {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
-    const el = this._wrapper.element!
+    const el = this._wrapper.element
     const directChildren = Array.from(el.children)
     if (this._pierceShadow && el.shadowRoot) {
       directChildren.push(...Array.from(el.shadowRoot.children))
@@ -572,7 +572,7 @@ export class Selector {
 
   get siblings(): Selectors {
     const parentSel = this.parent
-    if (!parentSel || this.isTextNode) {
+    if (!parentSel || this._wrapper.kind === 'text') {
       return new Selectors()
     }
     return new Selectors(
@@ -581,19 +581,19 @@ export class Selector {
   }
 
   *iterancestors(): Generator<Selector, void, unknown> {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return
     }
     let curr = this._pierceShadow
-      ? getDeepParentElement(this._wrapper.element!)
-      : this._wrapper.element!.parentElement
+      ? getDeepParentElement(this._wrapper.element)
+      : this._wrapper.element.parentElement
     while (curr) {
       yield this.convertElement(curr)
       curr = this._pierceShadow ? getDeepParentElement(curr) : curr.parentElement
     }
   }
 
-  findAncestor(func: (ancestor: Selector) => any): Selector | null {
+  findAncestor(func: (ancestor: Selector) => unknown): Selector | null {
     for (const ancestor of this.iterancestors()) {
       const res = func(ancestor)
       if (res instanceof Selectors ? res.length > 0 : Boolean(res)) {
@@ -603,7 +603,7 @@ export class Selector {
     return null
   }
 
-  find_ancestor(func: (ancestor: Selector) => any): Selector | null {
+  find_ancestor(func: (ancestor: Selector) => unknown): Selector | null {
     return this.findAncestor(func)
   }
 
@@ -612,18 +612,18 @@ export class Selector {
   }
 
   get next(): Selector | null {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return null
     }
-    const nextEl = this._wrapper.element!.nextElementSibling
+    const nextEl = this._wrapper.element.nextElementSibling
     return nextEl ? this.convertElement(nextEl) : null
   }
 
   get previous(): Selector | null {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return null
     }
-    const prevEl = this._wrapper.element!.previousElementSibling
+    const prevEl = this._wrapper.element.previousElementSibling
     return prevEl ? this.convertElement(prevEl) : null
   }
 
@@ -660,8 +660,8 @@ export class Selector {
   }
 
   get(): TextHandler {
-    if (this.isTextNode) {
-      return new TextHandler(this._wrapper.textValue ?? '')
+    if (this._wrapper.kind === 'text') {
+      return new TextHandler(this._wrapper.textValue)
     }
     return this.htmlContent
   }
@@ -683,8 +683,8 @@ export class Selector {
   }
 
   toString(): string {
-    if (this.isTextNode) {
-      return this._wrapper.textValue ?? ''
+    if (this._wrapper.kind === 'text') {
+      return this._wrapper.textValue
     }
     return this.htmlContent.toString()
   }
@@ -695,8 +695,8 @@ export class Selector {
 
   __repr__(): string {
     const lengthLimit = 40
-    if (this.isTextNode) {
-      let t = this._wrapper.textValue ?? ''
+    if (this._wrapper.kind === 'text') {
+      let t = this._wrapper.textValue
       if (t.length > lengthLimit) {
         t = `${t.slice(0, lengthLimit).trim()}...`
       }
@@ -734,7 +734,7 @@ export class Selector {
       | { percentage?: number; selectorType?: boolean; selector_type?: boolean } = 40,
     selectorType = false,
   ): Element[] | Selectors {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return selectorType ? new Selectors() : []
     }
 
@@ -761,7 +761,7 @@ export class Selector {
     }
 
     const scoreTable = new Map<number, Element[]>()
-    const rootEl = this._wrapper.element!
+    const rootEl = this._wrapper.element
     const candidates = collectDeepElements(rootEl, this._pierceShadow, false)
 
     for (const node of candidates) {
@@ -790,67 +790,25 @@ export class Selector {
 
   css(
     selector: string,
-    identifierOrOptions: string | AdaptiveQueryOptions = '',
-    adaptive?: boolean,
-    autoSave?: boolean,
-    percentage = 40,
-  ): Selectors {
-    if (this.isTextNode) {
-      return new Selectors()
-    }
-
-    let identifier = ''
-    let isAdaptive = adaptive ?? this._adaptiveEnabled
-    let isAutoSave = autoSave ?? this._adaptiveEnabled
-    let minPercentage = percentage
-
-    if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
-      identifier = identifierOrOptions.identifier ?? ''
-      isAdaptive = identifierOrOptions.adaptive ?? this._adaptiveEnabled
-      isAutoSave =
-        identifierOrOptions.autoSave ??
-        identifierOrOptions.auto_save ??
-        this._adaptiveEnabled
-      minPercentage = identifierOrOptions.percentage ?? 40
-    } else {
-      identifier = identifierOrOptions
-    }
-
-    if (!this._adaptiveEnabled || !selector.includes(',')) {
-      const xpathSelector = cssToXpath(selector)
-      return this.xpath(
-        xpathSelector,
-        identifier || selector,
-        isAdaptive,
-        isAutoSave,
-        minPercentage,
-      )
-    }
-
-    const combinedResults = new Selectors()
-    for (const singleSelector of splitCssSelectors(selector)) {
-      const xpathSelector = cssToXpath(singleSelector)
-      const partResults = this.xpath(
-        xpathSelector,
-        identifier || singleSelector,
-        isAdaptive,
-        isAutoSave,
-        minPercentage,
-      )
-      combinedResults.push(...partResults)
-    }
-    return combinedResults
-  }
-
-  xpath(
+    variables: Record<string, string | number>,
+  ): Selectors
+  css(
     selector: string,
-    identifierOrOptions: string | AdaptiveQueryOptions = '',
+    identifierOrOptions?: string | AdaptiveQueryOptions,
+    adaptive?: boolean,
+    autoSave?: boolean,
+    percentage?: number,
+    variables?: Record<string, string | number>,
+  ): Selectors
+  css(
+    selector: string,
+    identifierOrOptions: string | AdaptiveQueryOptions | Record<string, string | number> = '',
     adaptive?: boolean,
     autoSave?: boolean,
     percentage = 40,
-    variables?: Record<string, any>,
+    variables?: Record<string, string | number>,
   ): Selectors {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
 
@@ -858,16 +816,26 @@ export class Selector {
     let isAdaptive = adaptive ?? this._adaptiveEnabled
     let isAutoSave = autoSave ?? this._adaptiveEnabled
     let minPercentage = percentage
-    let xpathVars: Record<string, any> = variables ?? {}
+    let cssVars: Record<string, string | number> = { ...(variables ?? {}) }
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
-      identifier = identifierOrOptions.identifier ?? ''
-      isAdaptive = identifierOrOptions.adaptive ?? this._adaptiveEnabled
+      const opts = identifierOrOptions as AdaptiveQueryOptions
+      identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
+      isAdaptive = typeof opts.adaptive === 'boolean' ? opts.adaptive : (adaptive ?? this._adaptiveEnabled)
       isAutoSave =
-        identifierOrOptions.autoSave ??
-        identifierOrOptions.auto_save ??
-        this._adaptiveEnabled
-      minPercentage = identifierOrOptions.percentage ?? 40
+        typeof opts.autoSave === 'boolean'
+          ? opts.autoSave
+          : typeof opts.auto_save === 'boolean'
+            ? opts.auto_save
+            : (autoSave ?? this._adaptiveEnabled)
+      minPercentage = typeof opts.percentage === 'number' ? opts.percentage : 40
+      if (opts.variables) {
+        for (const [k, v] of Object.entries(opts.variables)) {
+          if (typeof v === 'string' || typeof v === 'number') {
+            cssVars[k] = v
+          }
+        }
+      }
       const reserved = new Set([
         'identifier',
         'adaptive',
@@ -876,7 +844,108 @@ export class Selector {
         'percentage',
         'variables',
       ])
-      xpathVars = { ...(identifierOrOptions.variables ?? {}) }
+      for (const [k, v] of Object.entries(identifierOrOptions)) {
+        if (!reserved.has(k) && (typeof v === 'string' || typeof v === 'number')) {
+          cssVars[k] = v
+        }
+      }
+    } else {
+      identifier = identifierOrOptions
+    }
+
+    let interpolatedSelector = selector
+    for (const [varName, varVal] of Object.entries(cssVars)) {
+      const valStr = escapeCssString(String(varVal))
+      const quotedPattern = new RegExp(
+        '([\'"])\\$' + escapeRegExpChars(varName) + '(?![a-zA-Z0-9_])\\1',
+        'g',
+      )
+      interpolatedSelector = interpolatedSelector.replace(quotedPattern, () => `"${valStr}"`)
+      const barePattern = new RegExp(
+        '\\$' + escapeRegExpChars(varName) + '(?![a-zA-Z0-9_])',
+        'g',
+      )
+      interpolatedSelector = interpolatedSelector.replace(barePattern, () => `"${valStr}"`)
+    }
+
+    if (!this._adaptiveEnabled || !interpolatedSelector.includes(',')) {
+      const xpathSelector = cssToXpath(interpolatedSelector)
+      return this.xpath(
+        xpathSelector,
+        identifier || interpolatedSelector,
+        isAdaptive,
+        isAutoSave,
+        minPercentage,
+        cssVars,
+      )
+    }
+
+    const combinedResults = new Selectors()
+    for (const singleSelector of splitCssSelectors(interpolatedSelector)) {
+      const xpathSelector = cssToXpath(singleSelector)
+      const partResults = this.xpath(
+        xpathSelector,
+        identifier || singleSelector,
+        isAdaptive,
+        isAutoSave,
+        minPercentage,
+        cssVars,
+      )
+      combinedResults.push(...partResults)
+    }
+    return combinedResults
+  }
+
+  xpath(
+    selector: string,
+    variables: Record<string, string | number>,
+  ): Selectors
+  xpath(
+    selector: string,
+    identifierOrOptions?: string | AdaptiveQueryOptions,
+    adaptive?: boolean,
+    autoSave?: boolean,
+    percentage?: number,
+    variables?: Record<string, string | number>,
+  ): Selectors
+  xpath(
+    selector: string,
+    identifierOrOptions: string | AdaptiveQueryOptions | Record<string, string | number> = '',
+    adaptive?: boolean,
+    autoSave?: boolean,
+    percentage = 40,
+    variables?: Record<string, string | number>,
+  ): Selectors {
+    if (this._wrapper.kind === 'text') {
+      return new Selectors()
+    }
+
+    let identifier = ''
+    let isAdaptive = adaptive ?? this._adaptiveEnabled
+    let isAutoSave = autoSave ?? this._adaptiveEnabled
+    let minPercentage = percentage
+    let xpathVars: Record<string, string | number | boolean> = variables ?? {}
+
+    if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
+      const opts = identifierOrOptions as AdaptiveQueryOptions
+      identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
+      isAdaptive = typeof opts.adaptive === 'boolean' ? opts.adaptive : (adaptive ?? this._adaptiveEnabled)
+      isAutoSave =
+        typeof opts.autoSave === 'boolean'
+          ? opts.autoSave
+          : typeof opts.auto_save === 'boolean'
+            ? opts.auto_save
+            : (autoSave ?? this._adaptiveEnabled)
+      minPercentage = typeof opts.percentage === 'number' ? opts.percentage : 40
+      const reserved = new Set([
+        'identifier',
+        'adaptive',
+        'autoSave',
+        'auto_save',
+        'percentage',
+        'variables',
+      ])
+      xpathVars = opts.variables ? { ...opts.variables } : {}
       for (const [k, v] of Object.entries(identifierOrOptions)) {
         if (!reserved.has(k)) {
           xpathVars[k] = v
@@ -892,13 +961,14 @@ export class Selector {
         typeof varVal === 'number' || typeof varVal === 'boolean'
           ? String(varVal)
           : xpathLiteral(String(varVal))
-      resolvedXpath = resolvedXpath.replace(
-        new RegExp(`\\$${varName}\\b`, 'g'),
-        replacement,
+      const pattern = new RegExp(
+        '\\$' + escapeRegExpChars(varName) + '(?![a-zA-Z0-9_])',
+        'g',
       )
+      resolvedXpath = resolvedXpath.replace(pattern, () => replacement)
     }
 
-    const rootEl = this._wrapper.element!
+    const rootEl = this._wrapper.element
     const doc = rootEl.ownerDocument ?? document
     const contextRoots: Element[] = [rootEl]
 
@@ -954,10 +1024,12 @@ export class Selector {
     if (matchedWrappers.length > 0) {
       if (this._adaptiveEnabled && isAutoSave) {
         const firstItem = matchedWrappers[0]
-        const targetEl =
-          typeof Element !== 'undefined' && firstItem instanceof Element
-            ? firstItem
-            : (firstItem as InternalNodeWrapper).parentElement
+        let targetEl: Element | null | undefined
+        if ('kind' in firstItem) {
+          targetEl = firstItem.kind === 'element' ? firstItem.element : firstItem.parentElement
+        } else {
+          targetEl = firstItem
+        }
         if (targetEl) {
           this.save(targetEl, identifier || selector)
         }
@@ -979,8 +1051,8 @@ export class Selector {
     return new Selectors()
   }
 
-  findAll(...args: any[]): Selectors {
-    if (this.isTextNode) {
+  findAll(...args: unknown[]): Selectors {
+    if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
     if (args.length === 0) {
@@ -1012,7 +1084,7 @@ export class Selector {
       } else if (arg instanceof RegExp) {
         patterns.push(arg)
       } else if (typeof arg === 'function') {
-        functions.push(arg)
+        functions.push(arg as (el: Selector) => boolean)
       } else if (arg && typeof arg === 'object') {
         const entries = Object.entries(arg)
         if (!entries.every(([k, v]) => typeof k === 'string' && typeof v === 'string')) {
@@ -1035,6 +1107,7 @@ export class Selector {
     for (const tag of effectiveTags) {
       let sel = tag
       for (const [key, value] of Object.entries(attributes)) {
+        if (!key) continue
         if (key === 'class') {
           const classNames = value.split(/\s+/).filter(Boolean)
           if (classNames.length > 0) {
@@ -1043,7 +1116,11 @@ export class Selector {
             sel += `[class="${escapeCssString(value)}"]`
           }
         } else {
-          sel += `[${key}="${escapeCssString(value)}"]`
+          const escapedKey =
+            typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+              ? CSS.escape(key)
+              : key.replace(/([^\w-])/g, '\\$1')
+          sel += `[${escapedKey}="${escapeCssString(value)}"]`
         }
       }
       if (sel !== '*') {
@@ -1072,11 +1149,11 @@ export class Selector {
     return results
   }
 
-  find_all(...args: any[]): Selectors {
+  find_all(...args: unknown[]): Selectors {
     return this.findAll(...args)
   }
 
-  find(...args: any[]): Selector | null {
+  find(...args: unknown[]): Selector | null {
     const all = this.findAll(...args)
     return all.length > 0 ? all[0] : null
   }
@@ -1085,7 +1162,7 @@ export class Selector {
     if (this._adaptiveEnabled && this._storage) {
       let targetElement: Element | null = null
       if (element instanceof Selector) {
-        if (element.isTextNode) {
+        if (element._wrapper.kind === 'text') {
           targetElement = element._wrapper.parentElement ?? null
         } else {
           targetElement = element.rawNode
@@ -1106,19 +1183,24 @@ export class Selector {
   retrieve(identifier: string): ElementFingerprint | null {
     if (this._adaptiveEnabled && this._storage) {
       const res = this._storage.retrieve(identifier)
-      if (res instanceof Promise) {
-        return null
+      if (res && typeof (res as Promise<unknown>).then === 'function') {
+        if (typeof (res as Promise<unknown>).catch === 'function') {
+          (res as Promise<unknown>).catch(() => {})
+        }
+        throw new Error(
+          `Storage returned an unhydrated Promise for identifier "${identifier}" during synchronous retrieval. Call "await storage.hydrate()" or use synchronous storage before querying.`,
+        )
       }
-      return res
+      return res as ElementFingerprint | null
     }
     throw new Error(
       "Can't use `adaptive` features while it's disabled globally, you have to start a new class instance.",
     )
   }
 
-  json<T = Record<string, any>>(): T {
-    if (this.isTextNode) {
-      return new TextHandler(this._wrapper.textValue ?? '').json<T>()
+  json<T = Record<string, unknown>>(): T {
+    if (this._wrapper.kind === 'text') {
+      return new TextHandler(this._wrapper.textValue).json<T>()
     }
     if (this._rawBody) {
       if (typeof this._rawBody === 'string') {
@@ -1143,22 +1225,31 @@ export class Selector {
     cleanMatch = false,
     caseSensitive = true,
   ): TextHandlers {
+    if (typeof optionsOrReplaceEntities === 'boolean') {
+      return this.text.re(
+        regex,
+        optionsOrReplaceEntities,
+        cleanMatch,
+        caseSensitive,
+        false,
+      )
+    }
     return this.text.re(
       regex,
-      optionsOrReplaceEntities as any,
+      optionsOrReplaceEntities,
       cleanMatch,
       caseSensitive,
       false,
-    ) as TextHandlers
+    )
   }
 
-  reFirst(
+  reFirst<T = null>(
     regex: string | RegExp,
-    defaultValue: any = null,
+    defaultValue: T = null as unknown as T,
     optionsOrReplaceEntities?: RegexExtractOptions | boolean,
     cleanMatch = false,
     caseSensitive = true,
-  ): TextHandler | any {
+  ): TextHandler | T {
     return this.text.reFirst(
       regex,
       defaultValue,
@@ -1168,13 +1259,13 @@ export class Selector {
     )
   }
 
-  re_first(
+  re_first<T = null>(
     regex: string | RegExp,
-    defaultValue: any = null,
+    defaultValue: T = null as unknown as T,
     optionsOrReplaceEntities?: RegexExtractOptions | boolean,
     cleanMatch = false,
     caseSensitive = true,
-  ): TextHandler | any {
+  ): TextHandler | T {
     return this.reFirst(regex, defaultValue, optionsOrReplaceEntities, cleanMatch, caseSensitive)
   }
 
@@ -1183,7 +1274,7 @@ export class Selector {
     ignoreAttributes: readonly string[] = ['href', 'src'],
     matchText = false,
   ): Selectors {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
 
@@ -1213,7 +1304,7 @@ export class Selector {
       shouldMatchText = matchText
     }
 
-    const rootEl = this._wrapper.element!
+    const rootEl = this._wrapper.element
     const currentDepth = Array.from(this.iterancestors()).length
     const ignoredSet = new Set(ignoredAttrs)
     const targetAttrs: Record<string, string> = {}
@@ -1289,7 +1380,7 @@ export class Selector {
     caseSensitive = false,
     cleanMatch = true,
   ): Selector | Selectors | null {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
 
@@ -1312,7 +1403,7 @@ export class Selector {
     const queryText = isCaseSensitive ? text : text.toLowerCase()
     const results = new Selectors()
     const descendants = collectDeepElements(
-      this._wrapper.element!,
+      this._wrapper.element,
       this._pierceShadow,
       false,
     )
@@ -1351,14 +1442,21 @@ export class Selector {
     partial = false,
     caseSensitive = false,
     cleanMatch = true,
-  ): any {
-    return this.findByText(
-      text,
-      firstMatchOrOptions as any,
-      partial,
-      caseSensitive,
-      cleanMatch,
-    )
+  ): Selector | Selectors | null {
+    if (firstMatchOrOptions === false) {
+      return this.findByText(text, false, partial, caseSensitive, cleanMatch)
+    }
+    if (firstMatchOrOptions === true) {
+      return this.findByText(text, true, partial, caseSensitive, cleanMatch)
+    }
+    const fn = this.findByText as (
+      t: string,
+      o: boolean | FindByTextOptions,
+      p?: boolean,
+      cs?: boolean,
+      cm?: boolean,
+    ) => Selector | Selectors | null
+    return fn.call(this, text, firstMatchOrOptions, partial, caseSensitive, cleanMatch)
   }
 
   findByRegex(
@@ -1379,7 +1477,7 @@ export class Selector {
     caseSensitive = false,
     cleanMatch = true,
   ): Selector | Selectors | null {
-    if (this.isTextNode) {
+    if (this._wrapper.kind === 'text') {
       return new Selectors()
     }
 
@@ -1399,7 +1497,7 @@ export class Selector {
 
     const results = new Selectors()
     const descendants = collectDeepElements(
-      this._wrapper.element!,
+      this._wrapper.element,
       this._pierceShadow,
       false,
     )
@@ -1434,13 +1532,20 @@ export class Selector {
     firstMatchOrOptions: boolean | FindByRegexOptions = true,
     caseSensitive = false,
     cleanMatch = true,
-  ): any {
-    return this.findByRegex(
-      query,
-      firstMatchOrOptions as any,
-      caseSensitive,
-      cleanMatch,
-    )
+  ): Selector | Selectors | null {
+    if (firstMatchOrOptions === false) {
+      return this.findByRegex(query, false, caseSensitive, cleanMatch)
+    }
+    if (firstMatchOrOptions === true) {
+      return this.findByRegex(query, true, caseSensitive, cleanMatch)
+    }
+    const fn = this.findByRegex as (
+      q: string | RegExp,
+      o: boolean | FindByRegexOptions,
+      cs?: boolean,
+      cm?: boolean,
+    ) => Selector | Selectors | null
+    return fn.call(this, query, firstMatchOrOptions, caseSensitive, cleanMatch)
   }
 }
 

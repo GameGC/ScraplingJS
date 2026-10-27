@@ -11,7 +11,7 @@ const ZERO_HIDING_PROPERTIES = new Set([
 ])
 const CSS_NEWLINE_PATTERN = /\r\n?|\f/g
 const STYLE_TOKEN_PATTERN =
-  /(\\.)|"(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?|(?<![\w-])url\((?![ \t\n]*["'])(?:[^)\\]|\\.?)*\)?|(\/\*[\s\S]*?(?:\*\/|$))/gi
+  /(\\.)|"(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?|(^|[^\w-])url\((?![ \t\n]*["'])(?:[^)\\]|\\.?)*\)?|(\/\*[\s\S]*?(?:\*\/|$))/gi
 const ZERO_VALUE_PATTERN = /^[+-]?(?:0+(?:\.0+)?|\.0+)(?:e[+-]?\d+)?[a-z%]*$/i
 const IMPORTANT_SUFFIX_PATTERN = /![ \t\n]*important$/i
 const ZWC_PATTERN = /[\u200b\u200c\u200d\ufeff\u2060\u180e]/g
@@ -26,9 +26,13 @@ export function isHiddenElement(element: Element): boolean {
     return true
   }
   let style = (element.getAttribute('style') ?? '').replace(CSS_NEWLINE_PATTERN, '\n')
-  style = style.replace(STYLE_TOKEN_PATTERN, (_match, g1, g2) => {
+  style = style.replace(STYLE_TOKEN_PATTERN, (_match, g1, prefix, g3) => {
     if (g1) return g1
-    return g2 ? ' ' : '""'
+    if (g3) return ' '
+    if (prefix !== undefined && prefix !== null) {
+      return prefix + '""'
+    }
+    return '""'
   })
 
   for (const declaration of style.split(';')) {

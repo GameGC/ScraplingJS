@@ -2,7 +2,11 @@ export function searchSnapshot(snapshot: string, pattern: string | RegExp): stri
   if (!snapshot) {
     return ''
   }
-  const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern
+  const cleanFlags = (typeof pattern === 'string' ? '' : pattern.flags).replace(/[gy]/g, '')
+  const regex =
+    typeof pattern === 'string'
+      ? new RegExp(pattern)
+      : new RegExp(pattern.source, cleanFlags)
   const lines = snapshot.split('\n')
   const matches: number[] = []
 

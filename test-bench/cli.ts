@@ -53,7 +53,6 @@ async function runCliBenchmark() {
         const { Selector, MemoryStorageSystem, StorageTools, calculateSimilarityScore } = (window as any).Scrapling
         const storage = new MemoryStorageSystem({ url: `https://indeed.com/${fwName}` })
 
-        // 1. Train on baseline
         const basePage = new Selector(baseHtml, {
           url: `https://indeed.com/${fwName}`,
           adaptive: true,
@@ -69,7 +68,6 @@ async function runCliBenchmark() {
           }
         }
 
-        // 2. Query mutated
         const mutatedPage = new Selector(mutatedHtml, {
           url: `https://indeed.com/${fwName}`,
           adaptive: true,
@@ -117,7 +115,6 @@ async function runCliBenchmark() {
 
   await browser.close()
 
-  // Print results
   for (const { fw, rows } of overallResults) {
     console.log(`\n📌 Target Framework: \x1b[1m\x1b[36m${fw.name}\x1b[0m`)
     console.log('----------------------------------------------------------------------------------------------------------------')
@@ -139,7 +136,6 @@ async function runCliBenchmark() {
     console.log('----------------------------------------------------------------------------------------------------------------')
   }
 
-  // Summary Metrics
   const totalQueries = overallResults.length * TARGET_ELEMENTS.length
   let totalTradPassed = 0
   let totalAdaptPassed = 0

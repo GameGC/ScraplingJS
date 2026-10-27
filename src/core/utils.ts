@@ -84,13 +84,19 @@ export function flatten<T>(lists: Iterable<Iterable<T>>): T[] {
   return result
 }
 
+export function escapeRegExpChars(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 export function escapeCssString(value: string): string {
   return value
+    .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
     .replace(/\n/g, '\\A ')
     .replace(/\r/g, '\\D ')
     .replace(/\f/g, '\\C ')
 }
+
 
 const MULTI_PART_TLDS = new Set([
   'co.uk',
@@ -244,3 +250,76 @@ export function getIdentifierHash(identifier: string): string {
   const hex = sha256Bytes(encoded)
   return `${hex}_${encoded.length}`
 }
+
+export function isElementVisible(element: Element | null | undefined): boolean {
+  if (!element) return false
+  if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+    const style = window.getComputedStyle(element)
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      style.visibility === 'collapse' ||
+      style.opacity === '0'
+    ) {
+      return false
+    }
+  }
+  const rect = element.getBoundingClientRect()
+  if (rect.width > 0 && rect.height > 0) {
+    return true
+  }
+  if (element instanceof HTMLElement) {
+    if (element.offsetWidth > 0 && element.offsetHeight > 0) {
+      return true
+    }
+  }
+  return element.getClientRects().length > 0
+}
+
+export function setNativeInputValue(
+  el: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+): void {
+  const isInput = typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement
+  const isTextarea = typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement
+  if (!isInput && !isTextarea) {
+    throw new TypeError('Target element is not an HTMLInputElement or HTMLTextAreaElement')
+  }
+  const proto = isTextarea ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+  const descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
+  const ownDescriptor = Object.getOwnPropertyDescriptor(el, 'value')
+  if (ownDescriptor && typeof ownDescriptor.set === 'function') {
+    ownDescriptor.set.call(el, value)
+  } else if (descriptor && typeof descriptor.set === 'function') {
+    descriptor.set.call(el, value)
+  } else {
+    el.value = value
+  }
+  if (typeof InputEvent !== 'undefined') {
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value }))
+  } else {
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  el.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+export function setNativeCheckboxValue(
+  el: HTMLInputElement,
+  checked: boolean,
+): void {
+  if (typeof HTMLInputElement === 'undefined' || !(el instanceof HTMLInputElement)) {
+    throw new TypeError('Target element is not an HTMLInputElement')
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked')
+  const ownDescriptor = Object.getOwnPropertyDescriptor(el, 'checked')
+  if (ownDescriptor && typeof ownDescriptor.set === 'function') {
+    ownDescriptor.set.call(el, checked)
+  } else if (descriptor && typeof descriptor.set === 'function') {
+    descriptor.set.call(el, checked)
+  } else {
+    el.checked = checked
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+  el.dispatchEvent(new Event('change', { bubbles: true }))
+}
+

@@ -10,7 +10,10 @@
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true
   },
   "include": ["src", "test/test-server.ts"]
 }

@@ -285,11 +285,11 @@ export class TextHandler extends String {
     }
     const matches = this.re(
       regex,
-      optionsOrReplaceEntities as any,
+      optionsOrReplaceEntities,
       cleanMatch,
       caseSensitive,
       false,
-    ) as TextHandlers
+    )
     return matches.length > 0 ? matches[0] : defaultValue
   }
 
@@ -333,11 +333,11 @@ export class TextHandlers extends Array<TextHandler> {
       (item) =>
         new TextHandler(item).re(
           regex,
-          optionsOrReplaceEntities as any,
+          optionsOrReplaceEntities,
           cleanMatch,
           caseSensitive,
           false,
-        ) as TextHandlers,
+        ),
     )
     return new TextHandlers(flatten(nested))
   }
@@ -373,11 +373,11 @@ export class TextHandlers extends Array<TextHandler> {
     for (const item of this) {
       const res = new TextHandler(item).re(
         regex,
-        optionsOrReplaceEntities as any,
+        optionsOrReplaceEntities,
         cleanMatch,
         caseSensitive,
         false,
-      ) as TextHandlers
+      )
       if (res.length > 0) {
         return res[0]
       }

@@ -409,9 +409,14 @@ function parseAttributeCondition(attrExpr: string, fullSelector: string): string
     case '^=':
       if (!val) return 'false()'
       return `starts-with(@${attrName}, ${lit})`
-    case '$=':
+    case '$=': {
       if (!val) return 'false()'
-      return `substring(@${attrName}, string-length(@${attrName}) - ${val.length} + 1) = ${lit}`
+      const codepointLength = Array.from(val).length
+      if (codepointLength === val.length) {
+        return `substring(@${attrName}, string-length(@${attrName}) - ${val.length} + 1) = ${lit}`
+      }
+      return `(substring(@${attrName}, string-length(@${attrName}) - ${codepointLength} + 1) = ${lit} or substring(@${attrName}, string-length(@${attrName}) - ${val.length} + 1) = ${lit})`
+    }
     case '*=':
       if (!val) return 'false()'
       return `contains(@${attrName}, ${lit})`

@@ -7,6 +7,7 @@ import type {
   RelocationEvent,
   StorageSystem,
 } from '../types'
+import { isElementVisible } from '../core/utils'
 import { areElementsAlike, calculateSimilarityScore } from '../core/similarity'
 import { StorageTools } from '../core/storage-tools'
 import { Selector } from '../parser/selector'
@@ -16,7 +17,13 @@ import {
   collectDeepShadowRoots,
   isDeepConnected,
 } from '../snapshot/shadow-dom'
-import { AutoStorageSystem } from '../storage'
+import {
+  MemoryStorageSystem,
+  type StorageErrorHandler,
+  type StorageHydrateSource,
+  type StorageReadPredicate,
+  type StorageSavePredicate,
+} from '../storage'
 
 export interface PagePersistenceManagerOptions {
   document?: Document
@@ -26,6 +33,12 @@ export interface PagePersistenceManagerOptions {
   debounceMs?: number
   percentage?: number
   onRelocate?: RelocationCallback
+  save?: StorageSavePredicate
+  read?: StorageReadPredicate
+  hydrate?: StorageHydrateSource
+  onError?: StorageErrorHandler
+  storageCapacity?: number
+  ignoreAttributes?: readonly string[]
 }
 
 export type ElementFilter<T extends HTMLElement = HTMLElement> = (
@@ -48,29 +61,6 @@ export interface WaitForElementOptions<T extends HTMLElement = HTMLElement> {
   identifier?: string
 }
 
-export function isElementVisible(element: Element | null | undefined): boolean {
-  if (!element) return false
-  if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
-    const style = window.getComputedStyle(element)
-    if (
-      style.display === 'none' ||
-      style.visibility === 'hidden' ||
-      style.visibility === 'collapse' ||
-      style.opacity === '0'
-    ) {
-      return false
-    }
-  }
-  const rect = element.getBoundingClientRect()
-  if (rect.width > 0 && rect.height > 0) {
-    return true
-  }
-  const htmlEl = element as HTMLElement
-  if (htmlEl.offsetWidth > 0 && htmlEl.offsetHeight > 0) {
-    return true
-  }
-  return element.getClientRects().length > 0
-}
 
 function detectQueryMode(
   query: string,
@@ -108,6 +98,7 @@ export class PagePersistenceManager {
   readonly storage: StorageSystem
   readonly debounceMs: number
   readonly defaultPercentage: number
+  readonly ignoreAttributes: readonly string[]
   private readonly activeStoppers = new Set<() => void>()
   private readonly relocateListeners = new Set<RelocationCallback>()
   private readonly notifiedElements = new WeakMap<Element, Set<string>>()
@@ -121,7 +112,17 @@ export class PagePersistenceManager {
       'default'
     this.debounceMs = options?.debounceMs ?? 50
     this.defaultPercentage = options?.percentage ?? 45
-    this.storage = options?.storage ?? new AutoStorageSystem({ url: this.url })
+    this.ignoreAttributes = options?.ignoreAttributes ?? ['href', 'src', 'id']
+    this.storage =
+      options?.storage ??
+      new MemoryStorageSystem({
+        url: this.url,
+        save: options?.save,
+        read: options?.read,
+        hydrate: options?.hydrate,
+        onError: options?.onError,
+        capacity: options?.storageCapacity,
+      })
     if (options?.onRelocate) {
       this.relocateListeners.add(options.onRelocate)
     }
@@ -178,9 +179,8 @@ export class PagePersistenceManager {
   }
 
   async init(): Promise<void> {
-    const s = this.storage as any
-    if (typeof s.hydrate === 'function') {
-      await s.hydrate()
+    if (typeof this.storage.hydrate === 'function') {
+      await this.storage.hydrate()
     }
   }
 
@@ -236,7 +236,7 @@ export class PagePersistenceManager {
     identifier: string,
     percentage = this.defaultPercentage,
     root?: Element | Document,
-    filter?: ElementFilter<any>,
+    filter?: ElementFilter<HTMLElement>,
   ): HTMLElement | null {
     const oldFingerprint = this.page.retrieve(identifier)
     if (!oldFingerprint) return null
@@ -259,7 +259,7 @@ export class PagePersistenceManager {
     selector: string,
     mode: 'css' | 'xpath' | 'text',
     identifier: string,
-    variables?: Record<string, string | number | boolean>,
+    variables?: Record<string, string | number>,
   ): Selectors {
     if (mode === 'xpath') {
       return rootSelector.xpath(selector, {
@@ -496,11 +496,24 @@ export class PagePersistenceManager {
     let bestScore = -1
 
     for (const candidate of candidates) {
+      if (candidate.tagName.toLowerCase() !== fingerprint.tag) continue
       if (filter && !filter(candidate as T)) continue
       const score = calculateSimilarityScore(fingerprint, candidate)
       if (score > bestScore) {
         bestScore = score
         bestElement = candidate
+      }
+    }
+
+    if (!bestElement || bestScore < percentage) {
+      for (const candidate of candidates) {
+        if (candidate.tagName.toLowerCase() === fingerprint.tag) continue
+        if (filter && !filter(candidate as T)) continue
+        const score = calculateSimilarityScore(fingerprint, candidate)
+        if (score > bestScore) {
+          bestScore = score
+          bestElement = candidate
+        }
       }
     }
 
@@ -558,13 +571,28 @@ export class PagePersistenceManager {
     }
 
     if (!bestElement || bestScore < percentage) {
+      for (const candidate of candidates) {
+        if (candidate.tagName.toLowerCase() === fingerprint.tag) continue
+        if (filter && !filter(candidate as T)) continue
+        const score = calculateSimilarityScore(fingerprint, candidate)
+        scored.push({ element: candidate, score })
+        if (score > bestScore) {
+          bestScore = score
+          bestElement = candidate
+        }
+      }
+    }
+
+    if (!bestElement || bestScore < percentage) {
       return []
     }
 
+    const ignoreList = this.ignoreAttributes
+    const ignoreSet = new Set(ignoreList)
     const primaryAttrs: Record<string, string> = {}
     for (let i = 0; i < bestElement.attributes.length; i++) {
       const attr = bestElement.attributes.item(i)
-      if (attr && attr.name !== 'href' && attr.name !== 'src' && attr.name !== 'id') {
+      if (attr && !ignoreSet.has(attr.name)) {
         primaryAttrs[attr.name] = attr.value
       }
     }
@@ -580,7 +608,7 @@ export class PagePersistenceManager {
           bestElement,
           primaryAttrs,
           item.element,
-          ['href', 'src', 'id', 'data-jk'],
+          ignoreList,
           0.8,
           false,
         )
@@ -591,7 +619,7 @@ export class PagePersistenceManager {
             bestElement,
             primaryAttrs,
             item.element,
-            ['href', 'src', 'id', 'data-jk'],
+            ignoreList,
             0.5,
             false,
           ))
@@ -723,7 +751,6 @@ export class PagePersistenceManager {
 
     const observer = new MutationObserver(() => {
       if (stopped) return
-      syncShadowObservers(observer)
       if (timer !== null) {
         clearTimeout(timer)
       }
@@ -790,7 +817,7 @@ export class PagePersistenceManager {
     timeoutMs = 10000,
     pollMs = 200,
   ): Promise<R | null> {
-    return new Promise<R | null>((resolve) => {
+    return new Promise<R | null>((resolve, reject) => {
       let settled = false
       const observedRoots = new WeakSet<Node>()
 
@@ -804,7 +831,12 @@ export class PagePersistenceManager {
             resolve(res)
             return true
           }
-        } catch {}
+        } catch (err) {
+          settled = true
+          cleanup()
+          reject(err)
+          return true
+        }
         return false
       }
 
@@ -865,9 +897,8 @@ export class PagePersistenceManager {
     }
     this.activeStoppers.clear()
     this.relocateListeners.clear()
-    const s = this.storage as any
-    if (typeof s.flush === 'function') {
-      await s.flush()
+    if (typeof this.storage.flush === 'function') {
+      await this.storage.flush()
     }
     if (typeof this.storage.close === 'function') {
       await this.storage.close()

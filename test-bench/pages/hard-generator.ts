@@ -1,7 +1,3 @@
-/**
- * Hard mutation generator – produces pages that stress adaptive matching.
- * Patterns based on real job-board redesigns observed 2023–2026.
- */
 
 export type HardMutationKind =
   | 'structural'
@@ -14,13 +10,9 @@ export type HardMutationKind =
 export interface HardGenOptions {
   kind?: HardMutationKind
   seed?: string
-  /** How aggressively to alter visible text (0–1) */
   textDrift?: number
-  /** Number of near-duplicate job cards to inject */
   decoyCount?: number
-  /** Replace <button> with <a role="button"> */
   linkifyButtons?: boolean
-  /** Force sidebar layout */
   sidebar?: boolean
 }
 
@@ -45,7 +37,6 @@ export function generateHardPage(opts: HardGenOptions = {}): string {
 
   const cls = (i: number) => `_${hash(seed, i)}`
 
-  // Text variants by drift level
   const findJobs =
     drift > 0.6 ? (kind === 'extreme' ? 'Search' : 'Search jobs') : 'Find jobs'
   const applyText =
@@ -63,7 +54,6 @@ export function generateHardPage(opts: HardGenOptions = {}): string {
 
   const jobCards: string[] = []
 
-  // Primary target card
   const applyEl = linkify
     ? `<a href="/apply/unity-01" role="button" class="${cls(20)}">${applyText}</a>`
     : `<button type="button" class="${cls(20)}">${applyText}</button>`
@@ -79,7 +69,6 @@ export function generateHardPage(opts: HardGenOptions = {}): string {
     </article>
   `)
 
-  // Decoys – similar but wrong
   const decoyData = [
     { title: 'Unity UI Designer', co: 'PixelForge Studios', sal: '$95,000 - $120,000 a year', apply: 'Apply now' },
     { title: 'Unity Developer (Contract)', co: 'GameLab Inc', sal: '$70 - $95 / hour', apply: 'Easily apply' },
@@ -137,7 +126,6 @@ export function generateHardPage(opts: HardGenOptions = {}): string {
 </html>`
   }
 
-  // Default / structural / semantic layout
   const formTag = kind === 'semantic' ? 'search' : 'section'
   const filterRemote = kind === 'semantic'
     ? `<li role="option" aria-selected="true" class="${cls(5)}">Remote</li>`

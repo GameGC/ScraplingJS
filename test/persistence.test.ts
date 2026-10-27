@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ChromeStorageSystem,
-  IndexedDBStorageSystem,
-  LocalStorageSystem,
+  MemoryStorageSystem,
   PagePersistenceManager,
   captureShadowSnapshot,
   createScrapling,
@@ -308,62 +306,39 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     container.remove()
   })
 
-  it('supports LocalStorageSystem, IndexedDBStorageSystem, and ChromeStorageSystem', async () => {
+  it('supports custom save and read predicates with MemoryStorageSystem and PagePersistenceManager', async () => {
     const el = document.createElement('a')
     el.setAttribute('href', '/profile')
     el.className = 'nav-link'
     el.textContent = 'My Profile'
 
-    const localStore = new LocalStorageSystem({ url: 'https://app.example.com' })
-    localStore.save(el, 'profile-link')
-    expect(localStore.retrieve('profile-link')?.text).toBe('My Profile')
-    localStore.remove('profile-link')
-    expect(localStore.retrieve('profile-link')).toBeNull()
-
-    const idbStore = new IndexedDBStorageSystem({
-      dbName: 'scrapling_test_db',
+    const customStore = new Map<string, unknown>()
+    const storage = new MemoryStorageSystem({
       url: 'https://app.example.com',
-    })
-    idbStore.save(el, 'idb-profile')
-    await idbStore.flush()
-
-    const idbStore2 = new IndexedDBStorageSystem({
-      dbName: 'scrapling_test_db',
-      url: 'https://app.example.com',
-    })
-    await idbStore2.hydrate()
-    expect(idbStore2.retrieve('idb-profile')?.attributes.href).toBe('/profile')
-    await idbStore.close()
-    await idbStore2.close()
-
-    const mockChromeMemory: Record<string, any> = {}
-    const chromeStore = new ChromeStorageSystem({
-      url: 'https://app.example.com',
-      area: {
-        async get() {
-          return { ...mockChromeMemory }
-        },
-        async set(items) {
-          Object.assign(mockChromeMemory, items)
-        },
+      save: (key, fp) => {
+        customStore.set(key, fp)
+      },
+      read: (key) => {
+        const val = customStore.get(key)
+        return val ? (val as ReturnType<typeof storage.retrieve>) : null
       },
     })
-    chromeStore.save(el, 'ext-profile')
-    await chromeStore.flush()
+    storage.save(el, 'profile-link')
+    expect(storage.retrieve('profile-link')?.text).toBe('My Profile')
+    expect(customStore.has('example.com:::profile-link')).toBe(true)
 
-    const chromeStore2 = new ChromeStorageSystem({
+    customStore.delete('example.com:::profile-link')
+    storage.delete('profile-link')
+    expect(storage.retrieve('profile-link')).toBeNull()
+
+    const manager = new PagePersistenceManager({
+      document,
       url: 'https://app.example.com',
-      area: {
-        async get() {
-          return { ...mockChromeMemory }
-        },
-        async set(items) {
-          Object.assign(mockChromeMemory, items)
-        },
-      },
+      storage,
     })
-    await chromeStore2.hydrate()
-    expect(chromeStore2.retrieve('ext-profile')?.text).toBe('My Profile')
+    storage.save(el, 'manager-profile')
+    expect(manager.page.retrieve('manager-profile')?.text).toBe('My Profile')
+    await manager.destroy()
   })
 
   it('detects hidden elements, converts to clean Markdown, and searches snapshots', () => {

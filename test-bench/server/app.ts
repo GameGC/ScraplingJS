@@ -58,11 +58,9 @@ const FRAMEWORKS = [
 export async function createBenchServer(port = 4000): Promise<ServerInstance> {
   const app = new Hono()
 
-  // Initialize Playwright Chrome instance
   const browser: Browser = await chromium.launch({ channel: 'chrome', headless: true })
   const workerPage: Page = await browser.newPage()
 
-  // Load Scrapling bundle into worker page
   const scraplingBundle = fs.readFileSync(path.resolve(BENCH_DIR, '../dist/index.mjs'), 'utf8')
   await workerPage.setContent(`
     <!DOCTYPE html>
@@ -79,7 +77,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
   `)
   await workerPage.waitForFunction(() => (window as any).__scraplingReady === true)
 
-  // Static Assets: CSS, JS, HTML Dashboard
   app.get('/', (c) => {
     const html = fs.readFileSync(path.join(BENCH_DIR, 'public/index.html'), 'utf8')
     return c.html(html)
@@ -97,7 +94,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
     return c.body(js)
   })
 
-  // Serve framework pages
   app.get('/pages/:filename', (c) => {
     const filename = c.req.param('filename')
     const filePath = path.join(BENCH_DIR, 'pages', filename)
@@ -108,7 +104,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
     return c.text('Page not found', 404)
   })
 
-  // Dynamic compiler mutation page endpoint
   app.get('/dynamic', (c) => {
     const seed = c.req.query('seed') || Math.random().toString(36).substring(2, 6)
     const framework = c.req.query('framework') as any
@@ -116,11 +111,9 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
     return c.html(html)
   })
 
-  // Metadata APIs
   app.get('/api/frameworks', (c) => c.json(FRAMEWORKS))
   app.get('/api/targets', (c) => c.json(TARGET_ELEMENTS))
 
-  // API: Locate a single target on a given framework
   app.post('/api/locate', async (c) => {
     const { frameworkId, targetId } = await c.req.json()
     const target = TARGET_ELEMENTS.find((t) => t.id === targetId) || TARGET_ELEMENTS[0]
@@ -134,7 +127,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
         const { Selector, MemoryStorageSystem, StorageTools, calculateSimilarityScore } = (window as any).Scrapling
         const storage = new MemoryStorageSystem({ url: 'https://indeed.com/bench' })
 
-        // 1. Train on baseline
         const basePage = new Selector(baseHtml, {
           url: 'https://indeed.com/bench',
           adaptive: true,
@@ -147,7 +139,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
           baseFp = StorageTools.elementToDict(foundBase[0].rawNode)
         }
 
-        // 2. Query mutated page
         const startTime = performance.now()
         const mutatedPage = new Selector(mutatedHtml, {
           url: 'https://indeed.com/bench',
@@ -155,11 +146,9 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
           storage,
         })
 
-        // Traditional lookup
         const tradResult = mutatedPage.css(target.initialSelector, { adaptive: false })
         const traditionalFound = tradResult.length > 0
 
-        // ScraplingJS adaptive lookup
         const adaptResult = mutatedPage.css(target.initialSelector, {
           identifier: target.id,
           adaptive: true,
@@ -224,7 +213,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
     return c.json(result)
   })
 
-  // API: Full Benchmark Matrix
   app.get('/api/benchmark', async (c) => {
     const baseHtml = fs.readFileSync(path.join(BENCH_DIR, 'pages/1-indeed-react-emotion.html'), 'utf8')
 
@@ -237,7 +225,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
           const { Selector, MemoryStorageSystem, StorageTools, calculateSimilarityScore } = (window as any).Scrapling
           const storage = new MemoryStorageSystem({ url: `https://indeed.com/${fw.id}` })
 
-          // Baseline training
           const basePage = new Selector(baseHtml, {
             url: `https://indeed.com/${fw.id}`,
             adaptive: true,
@@ -253,7 +240,6 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
             }
           }
 
-          // Mutated evaluation
           const mutatedPage = new Selector(mutatedHtml, {
             url: `https://indeed.com/${fw.id}`,
             adaptive: true,
