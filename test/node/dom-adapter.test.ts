@@ -95,7 +95,7 @@ describe('DomAdapter on the Node runtime', () => {
     expect(() => new Selector('<div/>')).toThrowError(DomAdapterError)
     expect(() => new Selector('<div/>')).toThrowError(/setDomAdapter/)
     expect(() => browserDomAdapter.parseHtml('<div/>')).toThrowError(/DOMParser is not available/)
-    expect(() => browserDomAdapter.createObserver(() => {})).toThrowError(/createObserver/)
+    expect(() => browserDomAdapter.createObserver?.(() => {})).toThrowError(/createObserver/)
     expect(() => new PagePersistenceManager({ dom: browserDomAdapter })).toThrowError(
       /needs a Document/,
     )

@@ -131,10 +131,14 @@ export function createScrapling(
 ): EasyScrapling {
   let currentOptions: PagePersistenceManagerOptions | undefined = options
   let instance: PagePersistenceManager | null = null
+  const relocateListeners = new Set<RelocationCallback>()
 
   const getManager = (): PagePersistenceManager => {
     if (!instance) {
       instance = new PagePersistenceManager(currentOptions)
+      for (const listener of relocateListeners) {
+        instance.onRelocate(listener)
+      }
     }
     return instance
   }
@@ -151,8 +155,12 @@ export function createScrapling(
   fn.configure = (newOptions: PagePersistenceManagerOptions): EasyScrapling => {
     currentOptions = { ...(currentOptions ?? {}), ...newOptions }
     if (instance) {
-      void instance.destroy()
+      const previous = instance
       instance = null
+      void previous.destroy().catch((err: unknown) => {
+        const error = err instanceof Error ? err : new Error(String(err))
+        currentOptions?.onError?.(error, { operation: 'close' })
+      })
     }
     return fn
   }
@@ -220,7 +228,12 @@ export function createScrapling(
   }
 
   fn.onRelocate = (callback: RelocationCallback): (() => void) => {
-    return getManager().onRelocate(callback)
+    relocateListeners.add(callback)
+    const unsubscribe = getManager().onRelocate(callback)
+    return () => {
+      relocateListeners.delete(callback)
+      unsubscribe()
+    }
   }
 
   fn.watch = ((
@@ -311,11 +324,27 @@ export function createScrapling(
   ): boolean => {
     const el = getManager().find(query, rootOrFilterOrKey, filterOrKey, key)
     if (!el) return false
-    if (!isInputElement(el) && !isTextAreaElement(el)) {
+    if (isInputElement(el) || isTextAreaElement(el)) {
+      el.focus()
+      setNativeInputValue(el, value)
+      return true
+    }
+    const editable =
+      el.isContentEditable ||
+      (el.hasAttribute('contenteditable') &&
+        el.getAttribute('contenteditable')?.toLowerCase() !== 'false')
+    if (!editable) {
       return false
     }
     el.focus()
-    setNativeInputValue(el, value)
+    el.textContent = value
+    const EventCtor =
+      el.ownerDocument?.defaultView?.Event ??
+      (typeof Event !== 'undefined' ? Event : undefined)
+    if (EventCtor) {
+      el.dispatchEvent(new EventCtor('input', { bubbles: true }))
+      el.dispatchEvent(new EventCtor('change', { bubbles: true }))
+    }
     return true
   }
 

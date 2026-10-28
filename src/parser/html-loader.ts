@@ -46,6 +46,35 @@ function parseHtmlToElement(
   }
 }
 
+const VOID_ELEMENTS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+])
+
+function escapeHtmlText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 export function formatPrettyHtml(node: Element, indent = 0): string {
   const pad = '  '.repeat(indent)
   const tag = node.tagName.toLowerCase()
@@ -53,11 +82,14 @@ export function formatPrettyHtml(node: Element, indent = 0): string {
   for (let i = 0; i < node.attributes.length; i++) {
     const a = node.attributes.item(i)
     if (a) {
-      attrs += ` ${a.name}="${a.value.replace(/"/g, '&quot;')}"`
+      attrs += ` ${a.name}="${escapeHtmlAttribute(a.value)}"`
     }
   }
+  if (VOID_ELEMENTS.has(tag)) {
+    return `${pad}<${tag}${attrs}>`
+  }
   if (node.children.length === 0) {
-    const text = node.textContent ?? ''
+    const text = escapeHtmlText(node.textContent ?? '')
     return `${pad}<${tag}${attrs}>${text}</${tag}>`
   }
   const childLines: string[] = []
@@ -68,7 +100,7 @@ export function formatPrettyHtml(node: Element, indent = 0): string {
     } else if (child.nodeType === 3) {
       const t = (child.nodeValue ?? '').trim()
       if (t) {
-        childLines.push(`${'  '.repeat(indent + 1)}${t}`)
+        childLines.push(`${'  '.repeat(indent + 1)}${escapeHtmlText(t)}`)
       }
     }
   }

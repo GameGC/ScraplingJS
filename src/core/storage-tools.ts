@@ -91,7 +91,7 @@ export class StorageTools {
     return StorageTools.getElementPath(element)
   }
 
-  static elementToDict(element: Element, includeRect = true): ElementFingerprint {
+  static elementToDict(element: Element, includeRect = false): ElementFingerprint {
     const parent = getDeepParentElement(element)
     const directText = getElementDirectText(element).trim()
     const fullText = cleanText(element.textContent ?? '').slice(0, 400)
@@ -202,7 +202,7 @@ export class StorageTools {
     return result
   }
 
-  static element_to_dict(element: Element, includeRect = true): ElementFingerprint {
+  static element_to_dict(element: Element, includeRect = false): ElementFingerprint {
     return StorageTools.elementToDict(element, includeRect)
   }
 }

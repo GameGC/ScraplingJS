@@ -89,6 +89,231 @@ export function splitCssSelectors(selector: string): string[] {
   return results
 }
 
+export type TypePositionKind =
+  | 'first-of-type'
+  | 'last-of-type'
+  | 'only-of-type'
+  | 'nth-of-type'
+  | 'nth-last-of-type'
+
+export interface TypePositionFilter {
+  kind: TypePositionKind
+  a: number
+  b: number
+}
+
+function parseNthCoefficients(expr: string): { a: number; b: number } | null {
+  const cleaned = expr.trim().toLowerCase().replace(/\s+/g, '')
+  if (cleaned === 'odd') return { a: 2, b: 1 }
+  if (cleaned === 'even') return { a: 2, b: 0 }
+  if (/^[+-]?\d+$/.test(cleaned)) return { a: 0, b: parseInt(cleaned, 10) }
+  const match = cleaned.match(/^([+-]?\d*)?n([+-]\d+)?$/)
+  if (!match) return null
+  const aRaw = match[1]
+  const a = aRaw === '' || aRaw === '+' || aRaw === undefined ? 1 : aRaw === '-' ? -1 : parseInt(aRaw, 10)
+  const b = match[2] ? parseInt(match[2], 10) : 0
+  return { a, b }
+}
+
+function terminalCompoundStart(selector: string): number {
+  let bracketDepth = 0
+  let parenDepth = 0
+  let quote: string | null = null
+  let start = 0
+  for (let i = 0; i < selector.length; i++) {
+    const ch = selector[i]
+    if (quote) {
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '\"') {
+      quote = ch
+      continue
+    }
+    if (ch === '[') bracketDepth++
+    else if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1)
+    else if (ch === '(') parenDepth++
+    else if (ch === ')') parenDepth = Math.max(0, parenDepth - 1)
+    else if (bracketDepth === 0 && parenDepth === 0 && (ch === '>' || ch === '+' || ch === '~' || /\s/.test(ch))) {
+      start = i + 1
+    }
+  }
+  return start
+}
+
+/**
+ * Detects type-positional pseudo-classes applied to a wildcard terminal
+ * compound (for example `.item:first-of-type`), which XPath 1.0 cannot express
+ * because it has no way to compare a node's name with the name of the context
+ * node inside a sibling predicate. The returned selector has those pseudos
+ * removed so the query can run normally; callers must post-filter the matches.
+ */
+export function extractTypePositionFilters(selector: string): {
+  selector: string
+  filters: TypePositionFilter[]
+} | null {
+  if (splitCssSelectors(selector).length !== 1) {
+    return null
+  }
+  const start = terminalCompoundStart(selector)
+  const head = selector.slice(0, start)
+  const compound = selector.slice(start).trim()
+  if (!compound) return null
+
+  const first = compound[0]
+  if (/[a-zA-Z_]/.test(first)) {
+    return null
+  }
+
+  const filters: TypePositionFilter[] = []
+  const targetNames = new Set([
+    'first-of-type',
+    'last-of-type',
+    'only-of-type',
+    'nth-of-type',
+    'nth-last-of-type',
+  ])
+  let stripped = ''
+  let i = 0
+  let changed = false
+  while (i < compound.length) {
+    const ch = compound[i]
+    if (ch === '\\' && i + 1 < compound.length) {
+      stripped += ch + compound[i + 1]
+      i += 2
+      continue
+    }
+    if (ch === '[') {
+      let depth = 0
+      let quote: string | null = null
+      let j = i
+      for (; j < compound.length; j++) {
+        const inner = compound[j]
+        if (quote) {
+          if (inner === quote) quote = null
+          continue
+        }
+        if (inner === "'" || inner === '\"') {
+          quote = inner
+        } else if (inner === '[') {
+          depth++
+        } else if (inner === ']') {
+          depth--
+          if (depth === 0) {
+            j++
+            break
+          }
+        }
+      }
+      if (depth !== 0) return null
+      stripped += compound.slice(i, j)
+      i = j
+      continue
+    }
+    if (ch !== ':') {
+      stripped += ch
+      i++
+      continue
+    }
+    if (compound[i + 1] === ':') {
+      stripped += compound.slice(i)
+      break
+    }
+    const nameStart = i + 1
+    let nameEnd = nameStart
+    while (nameEnd < compound.length && /[a-zA-Z-]/.test(compound[nameEnd])) nameEnd++
+    const name = compound.slice(nameStart, nameEnd)
+    let pseudoEnd = nameEnd
+    let arg: string | null = null
+    if (compound[nameEnd] === '(') {
+      let depth = 0
+      let quote: string | null = null
+      let j = nameEnd
+      for (; j < compound.length; j++) {
+        const inner = compound[j]
+        if (quote) {
+          if (inner === quote) quote = null
+          continue
+        }
+        if (inner === "'" || inner === '\"') {
+          quote = inner
+        } else if (inner === '(') {
+          depth++
+        } else if (inner === ')') {
+          depth--
+          if (depth === 0) {
+            j++
+            break
+          }
+        }
+      }
+      if (depth !== 0) return null
+      arg = compound.slice(nameEnd + 1, j - 1)
+      pseudoEnd = j
+    }
+    if (!targetNames.has(name)) {
+      stripped += compound.slice(i, pseudoEnd)
+      i = pseudoEnd
+      continue
+    }
+    const kind = name as TypePositionKind
+    if (name === 'nth-of-type' || name === 'nth-last-of-type') {
+      if (arg === null) return null
+      const coeffs = parseNthCoefficients(arg)
+      if (!coeffs) return null
+      filters.push({ kind, a: coeffs.a, b: coeffs.b })
+    } else {
+      if (arg !== null) return null
+      filters.push({ kind, a: 0, b: 0 })
+    }
+    changed = true
+    i = pseudoEnd
+  }
+
+  if (!changed) return null
+  if (!stripped) stripped = '*'
+  return { selector: `${head}${stripped}`, filters }
+}
+
+function matchesNth(index: number, a: number, b: number): boolean {
+  if (a === 0) return index === b
+  const n = (index - b) / a
+  return Number.isInteger(n) && n >= 0
+}
+
+export function elementMatchesTypePositionFilters(
+  element: Element,
+  filters: readonly TypePositionFilter[],
+): boolean {
+  const tag = element.tagName
+  let before = 0
+  for (let sib = element.previousElementSibling; sib; sib = sib.previousElementSibling) {
+    if (sib.tagName === tag) before++
+  }
+  let after = 0
+  for (let sib = element.nextElementSibling; sib; sib = sib.nextElementSibling) {
+    if (sib.tagName === tag) after++
+  }
+  const index = before + 1
+  const reverseIndex = after + 1
+  return filters.every((filter) => {
+    switch (filter.kind) {
+      case 'first-of-type':
+        return index === 1
+      case 'last-of-type':
+        return reverseIndex === 1
+      case 'only-of-type':
+        return index === 1 && reverseIndex === 1
+      case 'nth-of-type':
+        return matchesNth(index, filter.a, filter.b)
+      case 'nth-last-of-type':
+        return matchesNth(reverseIndex, filter.a, filter.b)
+      default:
+        return true
+    }
+  })
+}
+
 interface CompoundStep {
   combinator: '' | ' ' | '>' | '+' | '~'
   raw: string

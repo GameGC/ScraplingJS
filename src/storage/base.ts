@@ -7,7 +7,10 @@ export type AdaptiveFingerprint = ElementFingerprint
 
 export type SavePredicate = (key: string, fingerprint: ElementFingerprint) => void | Promise<void>
 export type ReadPredicate = (key: string) => ElementFingerprint | null | Promise<ElementFingerprint | null>
-export type ErrorHandler = (error: unknown, context: { operation: 'save' | 'read' | 'hydrate'; key?: string }) => void
+export type ErrorHandler = (
+  error: unknown,
+  context: { operation: 'save' | 'read' | 'hydrate' | 'close'; key?: string },
+) => void
 
 export type StorageSavePredicate = SavePredicate
 export type StorageReadPredicate = ReadPredicate
@@ -95,16 +98,24 @@ export function isValidFingerprint(fp: unknown): fp is ElementFingerprint {
       return false
     }
   }
-  if (candidate.siblings !== undefined && !Array.isArray(candidate.siblings)) {
+  if (
+    candidate.siblings !== undefined &&
+    (!Array.isArray(candidate.siblings) ||
+      !candidate.siblings.every((s) => typeof s === 'string'))
+  ) {
     return false
   }
-  if (candidate.children !== undefined && !Array.isArray(candidate.children)) {
+  if (
+    candidate.children !== undefined &&
+    (!Array.isArray(candidate.children) ||
+      !candidate.children.every((s) => typeof s === 'string'))
+  ) {
     return false
   }
-  if (candidate.depth !== undefined && (typeof candidate.depth !== 'number' || Number.isNaN(candidate.depth))) {
+  if (candidate.depth !== undefined && !Number.isFinite(candidate.depth)) {
     return false
   }
-  if (candidate.sibling_index !== undefined && (typeof candidate.sibling_index !== 'number' || Number.isNaN(candidate.sibling_index))) {
+  if (candidate.sibling_index !== undefined && !Number.isFinite(candidate.sibling_index)) {
     return false
   }
   if (
@@ -112,14 +123,10 @@ export function isValidFingerprint(fp: unknown): fp is ElementFingerprint {
     candidate.rect !== null &&
     (typeof candidate.rect !== 'object' ||
       Array.isArray(candidate.rect) ||
-      typeof (candidate.rect as BoundingRectInfo).x !== 'number' ||
-      Number.isNaN((candidate.rect as BoundingRectInfo).x) ||
-      typeof (candidate.rect as BoundingRectInfo).y !== 'number' ||
-      Number.isNaN((candidate.rect as BoundingRectInfo).y) ||
-      typeof (candidate.rect as BoundingRectInfo).width !== 'number' ||
-      Number.isNaN((candidate.rect as BoundingRectInfo).width) ||
-      typeof (candidate.rect as BoundingRectInfo).height !== 'number' ||
-      Number.isNaN((candidate.rect as BoundingRectInfo).height))
+      !Number.isFinite((candidate.rect as BoundingRectInfo).x) ||
+      !Number.isFinite((candidate.rect as BoundingRectInfo).y) ||
+      !Number.isFinite((candidate.rect as BoundingRectInfo).width) ||
+      !Number.isFinite((candidate.rect as BoundingRectInfo).height))
   ) {
     return false
   }

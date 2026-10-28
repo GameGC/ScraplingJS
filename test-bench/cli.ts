@@ -23,7 +23,9 @@ async function runCliBenchmark() {
   const baseHtmlPath = path.join(__dirname, 'pages/1-indeed-react-emotion.html')
   const baseHtml = fs.readFileSync(baseHtmlPath, 'utf8')
   const bundlePath = path.resolve(__dirname, '../dist/index.mjs')
-  const scraplingBundle = fs.readFileSync(bundlePath, 'utf8')
+  const scraplingBundle = fs
+    .readFileSync(bundlePath, 'utf8')
+    .replace(/<\/script/gi, '<\\/script')
 
   const browser = await chromium.launch({ channel: 'chrome', headless: true })
   const page = await browser.newPage()

@@ -3,8 +3,21 @@ import {
   areElementsAlike,
   calculateSimilarityScore,
   filterAttributes,
+  prepareFingerprint,
+  type PreparedFingerprint,
 } from './similarity'
 import { collectDeepElements } from './shadow-dom'
+
+const NON_TARGET_TAGS = new Set([
+  'script',
+  'style',
+  'link',
+  'meta',
+  'noscript',
+  'template',
+])
+
+const SEMANTIC_TAG_CHANGE_CONFIDENCE = 60
 
 export interface RelocationMatch {
   element: Element
@@ -28,32 +41,36 @@ export function resolveScopeRoot(
 export function scoreCandidates<T extends HTMLElement = HTMLElement>(
   scopeRoot: Element,
   fingerprint: ElementFingerprint,
-  percentage: number,
+  _percentage: number,
   filter?: (element: T) => boolean,
+  pierceShadow = true,
+  ignoreAttributes: readonly string[] = [],
 ): ScoredCandidates {
-  const candidates = collectDeepElements(scopeRoot, true, false)
+  const prepared = prepareFingerprint(fingerprint, ignoreAttributes)
+  const skipNonTargets = !NON_TARGET_TAGS.has(fingerprint.tag)
+  const candidates = collectDeepElements(scopeRoot, pierceShadow, false)
   const scored: RelocationMatch[] = []
   let best: RelocationMatch | null = null
 
   for (const candidate of candidates) {
     if (candidate.tagName.toLowerCase() !== fingerprint.tag) continue
     if (filter && !filter(candidate as T)) continue
-    const score = calculateSimilarityScore(fingerprint, candidate)
-    const match = { element: candidate, score }
+    const match = buildMatch(fingerprint, candidate, prepared, ignoreAttributes)
     scored.push(match)
-    if (!best || score > best.score) {
+    if (!best || match.score > best.score) {
       best = match
     }
   }
 
-  if (!best || best.score < percentage) {
+  if (!best || best.score < SEMANTIC_TAG_CHANGE_CONFIDENCE) {
     for (const candidate of candidates) {
-      if (candidate.tagName.toLowerCase() === fingerprint.tag) continue
+      const tag = candidate.tagName.toLowerCase()
+      if (tag === fingerprint.tag) continue
+      if (skipNonTargets && NON_TARGET_TAGS.has(tag)) continue
       if (filter && !filter(candidate as T)) continue
-      const score = calculateSimilarityScore(fingerprint, candidate)
-      const match = { element: candidate, score }
+      const match = buildMatch(fingerprint, candidate, prepared, ignoreAttributes)
       scored.push(match)
-      if (!best || score > best.score) {
+      if (!best || match.score > best.score) {
         best = match
       }
     }
@@ -62,12 +79,33 @@ export function scoreCandidates<T extends HTMLElement = HTMLElement>(
   return { scored, best }
 }
 
+function buildMatch(
+  fingerprint: ElementFingerprint,
+  element: Element,
+  prepared: PreparedFingerprint,
+  ignoreAttributes: readonly string[],
+): RelocationMatch {
+  return {
+    element,
+    score: calculateSimilarityScore(fingerprint, element, prepared, ignoreAttributes),
+  }
+}
+
 export function relocateHighestScoring(
   fingerprint: ElementFingerprint,
   scopeRoot: Element,
   percentage: number,
+  pierceShadow = true,
+  ignoreAttributes: readonly string[] = [],
 ): Element[] {
-  const { scored, best } = scoreCandidates(scopeRoot, fingerprint, percentage)
+  const { scored, best } = scoreCandidates(
+    scopeRoot,
+    fingerprint,
+    percentage,
+    undefined,
+    pierceShadow,
+    ignoreAttributes,
+  )
   if (!best || best.score < percentage) {
     return []
   }
@@ -81,8 +119,17 @@ export function relocateBest<T extends HTMLElement = HTMLElement>(
   scopeRoot: Element,
   percentage: number,
   filter?: (element: T) => boolean,
+  pierceShadow = true,
+  ignoreAttributes: readonly string[] = [],
 ): RelocationMatch | null {
-  const { best } = scoreCandidates<T>(scopeRoot, fingerprint, percentage, filter)
+  const { best } = scoreCandidates<T>(
+    scopeRoot,
+    fingerprint,
+    percentage,
+    filter,
+    pierceShadow,
+    ignoreAttributes,
+  )
   if (!best || best.score < percentage) {
     return null
   }
@@ -95,12 +142,15 @@ export function relocateAll<T extends HTMLElement = HTMLElement>(
   percentage: number,
   ignoreAttributes: readonly string[],
   filter?: (element: T) => boolean,
+  pierceShadow = true,
 ): RelocationMatch[] {
   const { scored, best } = scoreCandidates<T>(
     scopeRoot,
     fingerprint,
     percentage,
     filter,
+    pierceShadow,
+    ignoreAttributes,
   )
   if (!best || best.score < percentage) {
     return []

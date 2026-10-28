@@ -33,6 +33,9 @@ function isValidCodePoint(code: number): boolean {
   return !Number.isNaN(code) && code >= 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff)
 }
 
+const decodedEntityCache = new Map<string, string>()
+let entityDecoder: HTMLTextAreaElement | null = null
+
 export function replaceEntities(input: string): string {
   if (!input || !input.includes('&')) {
     return input
@@ -50,10 +53,18 @@ export function replaceEntities(input: string): string {
     if (lower in NAMED_ENTITIES) {
       return NAMED_ENTITIES[lower]
     }
+    const cached = decodedEntityCache.get(full)
+    if (cached !== undefined) {
+      return cached
+    }
     if (typeof document !== 'undefined') {
-      const el = document.createElement('textarea')
-      el.innerHTML = full
-      return el.value
+      if (!entityDecoder) {
+        entityDecoder = document.createElement('textarea')
+      }
+      entityDecoder.innerHTML = full
+      const value = entityDecoder.value
+      decodedEntityCache.set(full, value)
+      return value
     }
     return full
   })
@@ -126,6 +137,17 @@ const MULTI_PART_TLDS = new Set([
   'com.ar',
 ])
 
+function isIpLiteral(hostname: string): boolean {
+  if (hostname.startsWith('[') && hostname.endsWith(']')) {
+    return true
+  }
+  const parts = hostname.split('.')
+  if (parts.length !== 4) {
+    return false
+  }
+  return parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+}
+
 export function extractBaseDomain(url?: string | null, defaultValue = 'default'): string {
   if (!url || typeof url !== 'string' || !url.trim()) {
     return defaultValue
@@ -141,9 +163,17 @@ export function extractBaseDomain(url?: string | null, defaultValue = 'default')
     if (hostname.startsWith('www.')) {
       hostname = hostname.slice(4)
     }
+    const hostWithPort = parsed.port ? `${hostname}:${parsed.port}` : hostname
+    if (
+      isIpLiteral(hostname) ||
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost')
+    ) {
+      return hostWithPort
+    }
     const parts = hostname.split('.').filter(Boolean)
     if (parts.length <= 1) {
-      return defaultValue
+      return hostWithPort
     }
     if (parts.length >= 3) {
       const lastTwo = `${parts[parts.length - 2]}.${parts[parts.length - 1]}`

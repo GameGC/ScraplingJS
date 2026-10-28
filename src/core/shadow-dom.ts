@@ -61,6 +61,45 @@ export function collectDeepElements(
   return result
 }
 
+export function collectQueryContextRoots(root: Element, pierceShadow: boolean): Element[] {
+  const contexts: Element[] = [root]
+  if (!pierceShadow) {
+    return contexts
+  }
+
+  const appendShadowChildren = (shadow: ShadowRoot): void => {
+    const children = shadow.children
+    for (let i = 0; i < children.length; i++) {
+      const child = children.item(i)
+      if (child) {
+        contexts.push(child)
+      }
+    }
+  }
+
+  const visitChildren = (node: Node): void => {
+    const children = node.childNodes
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]
+      if (child.nodeType === 1) {
+        visitElement(child as Element)
+      }
+    }
+  }
+
+  const visitElement = (element: Element): void => {
+    const shadow = element.shadowRoot
+    if (shadow) {
+      appendShadowChildren(shadow)
+      visitChildren(shadow)
+    }
+    visitChildren(element)
+  }
+
+  visitElement(root)
+  return contexts
+}
+
 export function collectDeepShadowRoots(root: Node): ShadowRoot[] {
   const roots: ShadowRoot[] = []
   const visited = new Set<Node>()

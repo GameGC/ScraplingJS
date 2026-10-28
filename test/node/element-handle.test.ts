@@ -61,8 +61,10 @@ describe('Selector.fromHandle', () => {
       Selector.fromHandle({ evaluate: () => Promise.resolve(1), asElement: () => null }),
     ).rejects.toThrowError(/does not reference an element/)
 
+    const emptyElement = { outerHTML: '' } as unknown as Element
     const empty: FakeElementHandle = {
-      evaluate: () => Promise.resolve(''),
+      evaluate: <R>(pageFunction: (element: Element) => R): Promise<R> =>
+        Promise.resolve(pageFunction(emptyElement)),
       asElement: () => empty,
     }
     await expect(Selector.fromHandle(empty)).rejects.toThrowError(/outerHTML/)

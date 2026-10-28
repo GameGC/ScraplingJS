@@ -339,6 +339,12 @@ const siblingCards = firstCard ? firstCard.findSimilar({ ignoreAttributes: ['id'
 const extractedNumbers = page.css('.salary-badge').re(/\$(\d+k?)/i)
 ```
 
+`pierceShadow` (default `true`) is honored end to end: direct `css()`/`xpath()` queries, adaptive relocation once a query misses, and `PagePersistenceManager` restore/watch/wait (`new PagePersistenceManager({ document, pierceShadow: false })`). With it off, nothing inside a `ShadowRoot` is matched or returned as a relocation candidate.
+
+`PagePersistenceManager({ ignoreAttributes })` applies to both single-element (`restore`/`relocateWithScore`) and bulk (`relocateAllWithScore`) scoring, so a volatile `href`, `src`, `id`, or custom attribute is excluded from every comparison instead of only from sibling grouping. Relocation scores are also computed with a confidence gate: if the best same-tag candidate is below 60%, elements that changed tag (`div` → `span`, `button` → `a[role="button"]`) are scored as well, instead of being masked by an unrelated high-scoring element of the old tag.
+
+`MemoryStorageSystem` isolates entries by registrable domain and preserves `localhost`/IP ports and `chrome-extension://` ids as distinct keys. `clear()` removes only the current domain's entries; a second instance that requests a different `capacity` for the same `storageFile` gets its own bounded bucket instead of silently inheriting the first one's limit.
+
 ---
 
 ## Node.js, SSR & Puppeteer (`DomAdapter`)

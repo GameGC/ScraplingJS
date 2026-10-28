@@ -39,7 +39,10 @@ function extractTokensFromText(raw: string): string[] {
   return matches ? matches : []
 }
 
-function extractSemanticTokens(fp: ElementFingerprint): Set<string> {
+function extractSemanticTokens(
+  fp: ElementFingerprint,
+  ignored: ReadonlySet<string> | null = null,
+): Set<string> {
   const out = new Set<string>()
   const addFrom = (val: string | undefined | null, minLength = 3) => {
     if (!val) return
@@ -53,6 +56,7 @@ function extractSemanticTokens(fp: ElementFingerprint): Set<string> {
 
   const attrs = fp.attributes ?? {}
   for (const [k, v] of Object.entries(attrs)) {
+    if (ignored?.has(k)) continue
     if (k === 'style' || k === 'value') continue
     if (k === 'class') {
       for (const cls of fp.stable_classes ?? v.split(/\s+/)) {
@@ -65,6 +69,7 @@ function extractSemanticTokens(fp: ElementFingerprint): Set<string> {
 
   const pAttrs = fp.parent_attribs ?? {}
   for (const [k, v] of Object.entries(pAttrs)) {
+    if (ignored?.has(k)) continue
     if (
       k === 'aria-label' ||
       k === 'role' ||
@@ -104,7 +109,7 @@ function hasActiveState(fp: ElementFingerprint): boolean {
   return false
 }
 
-interface PreparedOriginal {
+export interface PreparedFingerprint {
   tokens: Set<string>
   text: string
   words: string[]
@@ -112,26 +117,34 @@ interface PreparedOriginal {
   hasActive: boolean
 }
 
-const preparedOriginalCache = new WeakMap<ElementFingerprint, PreparedOriginal>()
+const preparedOriginalCache = new WeakMap<ElementFingerprint, PreparedFingerprint>()
 
-function getPreparedOriginal(original: ElementFingerprint): PreparedOriginal {
-  const cached = preparedOriginalCache.get(original)
-  if (cached) return cached
+export function prepareFingerprint(
+  original: ElementFingerprint,
+  ignoreAttributes: readonly string[] = [],
+): PreparedFingerprint {
+  const ignored = ignoreAttributes.length > 0 ? new Set(ignoreAttributes) : null
+  if (!ignored) {
+    const cached = preparedOriginalCache.get(original)
+    if (cached) return cached
+  }
   const text = (original.text ?? original.all_text ?? '').trim()
   const words = text ? extractTokensFromText(text) : []
-  const prepared: PreparedOriginal = {
-    tokens: extractSemanticTokens(original),
+  const prepared: PreparedFingerprint = {
+    tokens: extractSemanticTokens(original, ignored),
     text,
     words,
     cleanWords: words.join(' '),
     hasActive: hasActiveState(original),
   }
-  preparedOriginalCache.set(original, prepared)
+  if (!ignored) {
+    preparedOriginalCache.set(original, prepared)
+  }
   return prepared
 }
 
 function computeTextSimilarityWithPrepared(
-  orig: PreparedOriginal,
+  orig: PreparedFingerprint,
   candRaw: string,
 ): number {
   const rawCharScore = sequenceRatio(orig.text, candRaw)
@@ -185,19 +198,41 @@ function computeTagSimilarity(
   return 0.0
 }
 
+function withoutIgnored(
+  attributes: Record<string, string> | undefined,
+  ignored: ReadonlySet<string> | null,
+): Record<string, string> {
+  if (!attributes) {
+    return {}
+  }
+  if (!ignored || ignored.size === 0) {
+    return attributes
+  }
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!ignored.has(key)) {
+      out[key] = value
+    }
+  }
+  return out
+}
+
 export function calculateSimilarityScore(
   original: ElementFingerprint,
   candidate: Element | ElementFingerprint,
+  prepared?: PreparedFingerprint,
+  ignoreAttributes: readonly string[] = [],
 ): number {
   let score = 0
   let checks = 0
+  const ignored = ignoreAttributes.length > 0 ? new Set(ignoreAttributes) : null
   const data = isElementNode(candidate)
     ? StorageTools.elementToDict(candidate, false)
     : (candidate as ElementFingerprint)
 
-  const preparedOrig = getPreparedOriginal(original)
+  const preparedOrig = prepared ?? prepareFingerprint(original, ignoreAttributes)
   const origTokens = preparedOrig.tokens
-  const candTokens = extractSemanticTokens(data)
+  const candTokens = extractSemanticTokens(data, ignored)
   let sharedTokenCount = 0
   for (const t of origTokens) {
     if (candTokens.has(t)) {
@@ -220,10 +255,16 @@ export function calculateSimilarityScore(
     checks += textWeight
   }
 
-  score += calculateDictDiff(original.attributes ?? {}, data.attributes ?? {})
+  score += calculateDictDiff(
+    withoutIgnored(original.attributes, ignored),
+    withoutIgnored(data.attributes, ignored),
+  )
   checks += 1
 
   for (const attrib of ['class', 'id', 'href', 'src'] as const) {
+    if (ignored?.has(attrib)) {
+      continue
+    }
     const origVal = original.attributes?.[attrib]
     if (origVal) {
       const candVal = data.attributes?.[attrib]
@@ -236,7 +277,7 @@ export function calculateSimilarityScore(
     }
   }
 
-  if (original.stable_classes && original.stable_classes.length > 0) {
+  if (!ignored?.has('class') && original.stable_classes && original.stable_classes.length > 0) {
     if (data.stable_classes && data.stable_classes.length > 0) {
       score += sequenceRatio(original.stable_classes, data.stable_classes)
       checks += 1
@@ -245,7 +286,7 @@ export function calculateSimilarityScore(
 
   if (original.semantic_attrs) {
     for (const [semKey, semVal] of Object.entries(original.semantic_attrs)) {
-      if (semVal) {
+      if (semVal && !ignored?.has(semKey)) {
         const candSemVal = data.semantic_attrs?.[semKey] ?? data.attributes?.[semKey]
         if (candSemVal !== undefined) {
           score += sequenceRatio(semVal, candSemVal)
@@ -275,7 +316,10 @@ export function calculateSimilarityScore(
     score += sequenceRatio(original.parent_name, data.parent_name)
     checks += 1
 
-    score += calculateDictDiff(original.parent_attribs ?? {}, data.parent_attribs ?? {})
+    score += calculateDictDiff(
+      withoutIgnored(original.parent_attribs, ignored),
+      withoutIgnored(data.parent_attribs, ignored),
+    )
     checks += 1
 
     if (original.parent_text) {

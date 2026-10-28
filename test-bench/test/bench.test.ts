@@ -8,6 +8,26 @@ import {
 import { TARGET_ELEMENTS } from '../lib/targets'
 import { generateMutatedPage } from '../pages/generator'
 
+function expectTargetMatch(
+  target: (typeof TARGET_ELEMENTS)[number],
+  recovered: readonly { rawNode: Element | null }[],
+): void {
+  expect(recovered.length).toBeGreaterThan(0)
+  const raw = recovered[0].rawNode
+  if (!raw) {
+    return
+  }
+  const text = (raw.textContent || raw.getAttribute('placeholder') || '').trim()
+  if (target.expectedTextSnippet) {
+    expect(text.toLowerCase()).toContain(target.expectedTextSnippet.toLowerCase())
+  }
+  if (target.expectedAttr) {
+    expect(raw.getAttribute(target.expectedAttr.name) ?? '').toContain(
+      target.expectedAttr.valueSnippet,
+    )
+  }
+}
+
 describe('ScraplingJS Layout Mutation Test Bench', () => {
   let baseHtml: string
   let nextHtml: string
@@ -72,13 +92,7 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
         adaptive: true,
         percentage: 35,
       })
-      expect(recovered.length).toBeGreaterThan(0)
-      const raw = recovered[0].rawNode!
-      const text = (raw.textContent || raw.getAttribute('placeholder') || '').trim()
-
-      if (target.expectedTextSnippet) {
-        expect(text.toLowerCase()).toContain(target.expectedTextSnippet.toLowerCase())
-      }
+      expectTargetMatch(target, recovered)
     }
   })
 
@@ -99,7 +113,7 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
         adaptive: true,
         percentage: 35,
       })
-      expect(recovered.length).toBeGreaterThan(0)
+      expectTargetMatch(target, recovered)
     }
   })
 
@@ -120,7 +134,7 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
         adaptive: true,
         percentage: 35,
       })
-      expect(recovered.length).toBeGreaterThan(0)
+      expectTargetMatch(target, recovered)
     }
   })
 
@@ -141,7 +155,7 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
         adaptive: true,
         percentage: 35,
       })
-      expect(recovered.length).toBeGreaterThan(0)
+      expectTargetMatch(target, recovered)
     }
   })
 

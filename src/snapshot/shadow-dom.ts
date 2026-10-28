@@ -12,12 +12,18 @@ export {
   isDeepConnected,
 }
 
-export function captureShadowSnapshot(doc: Document = document): string | null {
-  const deepRoots = collectDeepShadowRoots(doc.documentElement ?? doc)
+export function captureShadowSnapshot(doc?: Document): string | null {
+  const targetDoc = doc ?? (typeof document !== 'undefined' ? document : null)
+  if (!targetDoc) {
+    throw new TypeError(
+      'captureShadowSnapshot needs a Document when running outside a browser.',
+    )
+  }
+  const deepRoots = collectDeepShadowRoots(targetDoc.documentElement ?? targetDoc)
   if (deepRoots.length === 0) {
     return null
   }
-  const documentCopy = doc.implementation.createHTMLDocument('')
+  const documentCopy = targetDoc.implementation.createHTMLDocument('')
   let roots = 0
 
   function copyNode(node: Node, pierce = true): Node {
@@ -71,11 +77,17 @@ export function captureShadowSnapshot(doc: Document = document): string | null {
     return target
   }
 
-  const root = copyNode(doc.documentElement) as Element
+  const root = copyNode(targetDoc.documentElement) as Element
   if (roots === 0) {
     return null
   }
   documentCopy.adoptNode(root)
-  const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : ''
+  const Serializer =
+    targetDoc.defaultView?.XMLSerializer ??
+    (typeof XMLSerializer !== 'undefined' ? XMLSerializer : null)
+  const doctype =
+    targetDoc.doctype && Serializer
+      ? new Serializer().serializeToString(targetDoc.doctype)
+      : ''
   return doctype + root.outerHTML
 }

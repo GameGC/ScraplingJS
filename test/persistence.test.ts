@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   MemoryStorageSystem,
   PagePersistenceManager,
+  browserDomAdapter,
   captureShadowSnapshot,
   createScrapling,
   htmlToMarkdown,
   isHiddenElement,
   runBrowserActions,
   searchSnapshot,
+  type DomAdapter,
 } from '../src'
 
 describe('Chrome Extension Page Persistence & Browser Features', () => {
@@ -363,6 +365,19 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     expect(md).not.toContain('Prompt injection')
     expect(md).not.toContain('alert(1)')
 
+    const richMd = htmlToMarkdown(`
+      <div>
+        <img src="https://cdn.example.com/chart.png" alt="Quarterly chart" />
+        <table>
+          <tr><th>Role</th><th>Pay</th></tr>
+          <tr><td>Developer</td><td>$140,000</td></tr>
+        </table>
+      </div>
+    `)
+    expect(richMd).toContain('![Quarterly chart](https://cdn.example.com/chart.png)')
+    expect(richMd).toContain('| Role | Pay |')
+    expect(richMd).toContain('| Developer | $140,000 |')
+
     const snap = [
       '- document:',
       '  - main:',
@@ -403,6 +418,42 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     expect((wrapper.querySelector('#agree-check') as HTMLInputElement).checked).toBe(true)
     expect(clicked).toBe(true)
 
+    wrapper.remove()
+  })
+
+  it('fills contenteditable hosts and dispatches the requested mouse button', async () => {
+    const wrapper = document.createElement('div')
+    wrapper.innerHTML = `
+      <div id="editor" contenteditable="true"></div>
+      <button id="menu-btn" type="button">Menu</button>
+    `
+    document.body.appendChild(wrapper)
+
+    const editor = wrapper.querySelector('#editor') as HTMLElement
+    let inputFired = false
+    editor.addEventListener('input', () => {
+      inputFired = true
+    })
+
+    const menuButton = wrapper.querySelector('#menu-btn') as HTMLButtonElement
+    let contextButton = -1
+    menuButton.addEventListener('contextmenu', (event) => {
+      contextButton = event.button
+    })
+
+    const scrapling = createScrapling({ document })
+    expect(scrapling.fill('#editor', 'Hello')).toBe(true)
+    expect(editor.textContent).toBe('Hello')
+    expect(editor.isContentEditable).toBe(true)
+    expect(inputFired).toBe(true)
+
+    await runBrowserActions(
+      [{ type: 'click', target: '#menu-btn', button: 'right' }],
+      { document },
+    )
+    expect(contextButton).toBe(2)
+
+    await scrapling.manager.destroy()
     wrapper.remove()
   })
 
@@ -464,6 +515,75 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     expect(md).toContain('- Item 1')
 
     await s.manager.destroy()
+    container.remove()
+  })
+
+  it('debounces a burst of mutations into one evaluation instead of one per batch', async () => {
+    let fire: (() => void) | null = null
+    const adapter: DomAdapter = {
+      ...browserDomAdapter,
+      createObserver: (callback) => {
+        fire = () => callback([])
+        return {
+          observe: () => {},
+          disconnect: () => {
+            fire = null
+          },
+        }
+      },
+    }
+
+    const manager = new PagePersistenceManager({
+      document,
+      dom: adapter,
+      debounceMs: 5,
+      adaptiveDomain: 'waiter-debounce',
+    })
+
+    let checks = 0
+    const pending = manager.waitUntil(() => {
+      checks++
+      return null
+    }, 500, 100)
+
+    expect(checks).toBe(1)
+    for (let i = 0; i < 50; i++) {
+      fire?.()
+    }
+    expect(checks).toBe(1)
+
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    expect(checks).toBe(2)
+
+    await manager.destroy()
+    await pending
+  })
+
+  it('runs pseudo-CSS and bare $variable selectors as CSS instead of searching for their literal text', () => {
+    const container = document.createElement('div')
+    container.innerHTML = `
+      <ul id="modes">
+        <li data-sku="SKU-1">Alpha</li>
+        <li data-sku="SKU-2">Beta</li>
+      </ul>
+      <p class="note">Amount: $10 (approx</p>
+    `
+    document.body.appendChild(container)
+
+    const manager = new PagePersistenceManager({
+      document,
+      url: 'https://modes.example.com',
+    })
+
+    expect(manager.find('li:contains("Beta")')?.textContent).toBe('Beta')
+    expect(manager.findAll('li:contains("Al")').length).toBe(1)
+    expect(
+      manager
+        .resolve('li[data-sku=$sku]', { variables: { sku: 'SKU-2' } })[0]
+        ?.text.toString(),
+    ).toBe('Beta')
+    expect(manager.find('Amount: $10 (approx')?.textContent).toContain('Amount')
+
     container.remove()
   })
 })

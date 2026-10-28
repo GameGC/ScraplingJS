@@ -237,7 +237,10 @@ describe('Adversarial Stress Test: isValidFingerprint Type Guard', () => {
     circular.siblings = [circular]
     circular.children = [circular]
 
-    expect(isValidFingerprint(circular)).toBe(true)
+    // Element-type lists must contain strings; rejecting the malformed entries
+    // must not recurse into the circular object graph.
+    expect(() => isValidFingerprint(circular)).not.toThrow()
+    expect(isValidFingerprint(circular)).toBe(false)
   })
 
   it('handles huge string payloads safely', () => {

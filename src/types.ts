@@ -130,6 +130,9 @@ export interface PagePersistenceWatcherOptions {
   mode?: 'auto' | 'css' | 'xpath' | 'text'
   percentage?: number
   autoUpdateFingerprint?: boolean
+  root?: Element | Document
+  filter?: (element: HTMLElement) => boolean
+  variables?: Record<string, string | number>
   onResolved?: (element: HTMLElement, relocated: boolean, score?: number) => void
   onLost?: () => void
 }

@@ -1,5 +1,15 @@
+export const BENCH_FRAMEWORK_IDS = [
+  'react-emotion',
+  'nextjs-cssmodules',
+  'vue-tailwind',
+  'svelte-scoped',
+  'nodejs-bem',
+] as const
+
+export type BenchmarkFrameworkId = (typeof BENCH_FRAMEWORK_IDS)[number]
+
 export interface CompilerMutationOptions {
-  framework?: 'react-emotion' | 'nextjs-cssmodules' | 'vue-tailwind' | 'svelte-scoped' | 'nodejs-bem'
+  framework?: BenchmarkFrameworkId
   hashSeed?: string
   tagVariation?: 'semantic' | 'div-soup' | 'classic'
   classPrefix?: string

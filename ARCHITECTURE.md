@@ -21,30 +21,31 @@ The fix is not "more features". It is a smaller, sharper product with a canonica
 | Area | What works | Where |
 |---|---|---|
 | DOM parsing | HTML string, `Uint8Array`, `Element`, `Document`, `ShadowRoot`, `Node`; comment stripping; pretty print | `src/parser/html-loader.ts`, `src/parser/selector.ts` |
-| CSS queries | CSS-to-XPath compiler, `::text`, `::attr`, `:contains`, `:not`, `:nth-child`, comma splitting, XPath fallback, `$var` interpolation | `src/core/translator.ts`, `src/parser/query-runner.ts` |
-| XPath queries | XPath 1.0 execution across open ShadowRoots with deduplication | `src/parser/query-runner.ts` |
+| CSS queries | CSS-to-XPath compiler, `::text`, `::attr`, `:contains`, `:not`, `:nth-child`, comma splitting, single-pass `$var` interpolation (an inserted value is never re-scanned); native `querySelectorAll` fast path when the scope holds no shadow roots, translator as fallback and syntax authority | `src/core/translator.ts`, `src/parser/query-runner.ts`, `src/parser/selector.ts` |
+| XPath queries | XPath 1.0 execution across open ShadowRoots with deduplication; `//` expressions are scoped to an element-rooted selector for every top-level union branch; one shared shadow-context scan per `css()` call across comma-group parts | `src/parser/query-runner.ts`, `src/core/shadow-dom.ts` |
 | Traversal | parent, children, siblings, next/previous, ancestors, descendants, Shadow DOM and slot piercing | `src/parser/dom-traversal.ts`, `src/core/shadow-dom.ts` |
 | Extraction | direct text, all text with tag/visibility filters, attributes, HTML, JSON, regex extraction | `src/parser/selector.ts`, `src/core/text-handler.ts`, `src/core/attributes-handler.ts` |
 | Search | `findAll` by tag/attributes, text search, regex search, similar-element search | `src/parser/element-finder.ts` |
 | Fingerprints | tag, attributes, direct/all text, path, parent, siblings, children, semantic attrs, stable classes, depth, sibling index, optional rect | `src/core/storage-tools.ts`, `src/types.ts` |
-| Adaptive relocation | weighted similarity, tag-first two-pass scan, highest-score group, threshold policy, shared by `Selector` and `PagePersistenceManager` | `src/core/relocator.ts`, `src/core/similarity.ts` |
-| Persistence | domain-scoped LRU memory, custom save/read/hydrate/onError predicates, merge-only hydration, write-behind async saves, flush/close | `src/storage/base.ts`, `src/storage/memory.ts` |
-| Page sessions | capture/remember/restore, resolve/find/findAll, onRelocate telemetry, mutation watch with debounce, waitFor/waitUntil, destroy | `src/persistence/page-persistence.ts` |
+| Adaptive relocation | weighted similarity, tag-first two-pass scan with a semantic-tag-change confidence gate, highest-score group, threshold policy, never-target tag prefilter, fingerprint prepared once per scan, `ignoreAttributes` applied to scoring, `pierceShadow` honored, shared by `Selector` and `PagePersistenceManager` | `src/core/relocator.ts`, `src/core/similarity.ts` |
+| Persistence | domain-scoped LRU memory keyed by registrable domain (ports preserved for `localhost`/IPs, extension ids preserved for `chrome-extension://`), capacity-aware bucket sharing, domain-scoped `clear()`, custom save/read/hydrate/onError predicates, merge-only hydration, write-behind async saves, flush/close | `src/storage/base.ts`, `src/storage/memory.ts`, `src/core/text-utils.ts` |
+| Page sessions | capture/remember/restore, resolve/find/findAll, onRelocate telemetry, mutation watch with debounce, debounced waitFor/waitUntil with 200 ms fallback polling, destroy | `src/persistence/page-persistence.ts` |
 | Browser actions | click/double-click, move, wheel, textbox, checkbox, radio, combobox, press key, wait time/element/load; validation; AbortSignal; native React-compatible setters | `src/actions/browser-actions.ts` |
-| AI snapshot helpers | open-shadow-root snapshot, hidden-content sanitizer, HTML-to-Markdown, snapshot search | `src/snapshot/*` |
+| AI snapshot helpers | open-shadow-root snapshot, hidden-content sanitizer (`hidden` on any tag, `visibility:collapse`), HTML-to-Markdown with images and tables, escaped pretty print with void tags, snapshot search | `src/snapshot/*`, `src/parser/html-loader.ts` |
 | Ergonomic facade | callable `scrapling`, `all`, `in`, text/texts/attr, click/fill/check, waitFor/waitUntil, watch, onRelocate, configure, markdown, remember/capture/restore | `src/persistence/easy.ts`, `src/persistence/scoped.ts` |
 | Runtime boundary | `DomAdapter` (`parseHtml`, `evaluateXPath`, `createObserver`, node-kind predicates) with a browser default, a global registry and a per-instance `dom` option; actionable errors when neither an adapter nor browser globals exist | `src/core/dom-adapter.ts`, `src/parser/html-loader.ts`, `src/parser/query-runner.ts` |
-| Node / Puppeteer | `await Selector.fromHandle(handle)` snapshots a Puppeteer/Playwright `ElementHandle` into an offline `Selector`; linkedom + xpath reference adapter; 12 Node-runtime tests | `src/parser/element-handle.ts`, `test/node/`, `vitest.node.config.ts` |
-| Quality gates | strict TypeScript, 102 browser tests, 12 Node tests, typecheck/build, synthetic migration benchmark | `test/`, `test/node/`, `test-bench/`, `.github/workflows` |
+| Node / Puppeteer | `await Selector.fromHandle(handle)` snapshots a Puppeteer/Playwright `ElementHandle` into an offline `Selector`; linkedom + xpath reference adapter; 33 Node-runtime tests | `src/parser/element-handle.ts`, `test/node/`, `vitest.node.config.ts` |
+| Quality gates | strict TypeScript, 120 browser tests, 33 Node tests, `typecheck` + `typecheck:test` + build, synthetic migration benchmark, 17 SHA-pinned GitHub Actions refs | `test/`, `test/node/`, `test-bench/`, `tsconfig.test.json`, `.github/workflows` |
 
 ### 2.2 Current constraints
 
 - **Adapter-portable, browser-first.** HTML parsing, XPath evaluation and mutation observation now go through `DomAdapter`; Node needs `parseHtml` + `evaluateXPath` and, only for `watch()`, `createObserver`. Remaining global dependencies: element-vs-fingerprint checks use structural `nodeType` (no `Element` global), but visibility still reads `ownerDocument.defaultView.getComputedStyle` + `getClientRects`, actions dispatch synthetic events, and `src/snapshot/shadow-dom.ts` defaults to a global `document`.
 - **Sync-first storage with an async escape hatch.** Queries are synchronous, but `StorageSystem.retrieve` may return a Promise and then throws an "unhydrated" error. Users must remember to `await hydrate()` before any query. This is a leaky contract.
-- **Global cache singleton.** `globalBuckets` is module state keyed by `storageFile`; all managers of the same file share it. Tests can interfere, and page isolation is implicit.
+- **Global cache singleton.** `globalBuckets` is module state keyed by `storageFile`; managers of the same file and capacity share it, while a different requested capacity gets a private bucket. `clear()` only removes the current base-domain prefix, but tests still need `clearAll()` between files.
 - **One entrypoint.** `exports` has only `"."`. Importing `isElementVisible` ships the whole 173 KB bundle; there is no `./query`, `./storage`, `./actions`, or `./compat`.
 - **Dual API.** Every core concept has a camelCase and a Python alias. `Selector` returns `TextHandler` objects that mostly behave like strings; `Selectors extends Array` has a manually repaired prototype; `Proxy` attribute access is untyped and collides with real methods.
 - **No product proof.** No MV3 extension, no real-site corpus, no trace/devtools view, no Node example, no live playground, no API reference generated from types.
+- **Two CSS execution paths by design.** `css()` prefers native `querySelectorAll` when the scope contains no shadow context roots and falls back to XPath otherwise, so the CSS engine — not the translator — is authoritative for selectors both accept. The translator still decides validity, which keeps the error surface identical across scopes.
 - **Fork residue.** Python docs site, 416 Markdown files, Python tests, `pyproject.toml`, `tox.ini`, PyPI release, Python Dockerfile, Python roadmap, stale `TEST_READY.md`, absolute local links in `README.md`.
 
 ## 3. What the project should become
@@ -216,14 +217,14 @@ interface DomAdapter {
 }
 ```
 
-`browserDomAdapter` is the default; `setDomAdapter()`/`getDomAdapter()` plus a per-instance `dom` option cover global and scoped injection. Still open: `getComputedStyle`/layout metrics stay outside the adapter (they are read through `element.ownerDocument.defaultView`, so they follow the injected document), `runBrowserActions` remains DOM-only, and generic XPath engines need an explicit hint (`isHtml: true` or `allowAnyNamespaceForNoPrefix: true`) for unprefixed name tests — see the reference adapter in `test/node/support/linkedom-adapter.ts`.
+`browserDomAdapter` is the default; `setDomAdapter()`/`getDomAdapter()` plus a per-instance `dom` option cover global and scoped injection. Native CSS matching is optional at the adapter seam: it is attempted through the root element itself (`querySelectorAll`/`matches`, with every union branch prefixed by `:scope` for element-rooted selectors) and skipped when the adapter lacks it or the selector throws, in which case XPath runs through `evaluateXPath`. Still open: `getComputedStyle`/layout metrics stay outside the adapter (they are read through `element.ownerDocument.defaultView`, so they follow the injected document), `runBrowserActions` remains DOM-only (it accepts the same `dom` adapter option), and generic XPath engines need an explicit hint (`isHtml: true` or `allowAnyNamespaceForNoPrefix: true`) for unprefixed name tests — see the reference adapter in `test/node/support/linkedom-adapter.ts`.
 
 ### 4.7 Fingerprinting and relocation
 
 - Keep fingerprints as a versioned data format: `{ v: 2, tag, attributes, text, path, parent, siblings, children, semantic, stableClasses }`. Do not depend on `rect` by default; layout reads are expensive and often zero in hidden tabs.
 - Move score weights and ignore lists into `RelocationPolicy`, not scattered constants.
 - Return evidence from scoring: tag match, attribute similarity, text similarity, path depth, sibling index. `onRelocate` and trace mode should show why a candidate won.
-- Cache `collectDeepElements` per mutation epoch; invalidate on `MutationObserver` callbacks. This is the difference between a demo and a production library on large DOMs.
+- Cache `collectDeepElements` per mutation epoch; invalidate on `MutationObserver` callbacks. This is the difference between a demo and a production library on large DOMs. Not done yet: relocation still walks the scope per scan; the shipped wins are a prepared fingerprint per scan, the never-target tag prefilter and the difflib-faithful matcher (autojunk cutoff + pooled typed-array scratch, exact ratio parity with Python `difflib` on 200 randomized pairs).
 - Cap candidate scans (`maxCandidates`) and expose a deterministic fallback policy.
 
 ### 4.8 Actions and AI
@@ -300,6 +301,8 @@ A reasonable "hit" for this niche:
 - **Node support:** the browser-extension wedge does not need Node on day one. Adding a half-working Node adapter would dilute the promise. Ship browser-first; add Node when XPath and visibility are genuinely tested.
 - **AI hype:** snapshot/Markdown alone is commodity. The differentiator is stable refs plus self-healing resolution. Build that, not another chat wrapper.
 - **Compatibility:** keeping Python aliases forever will freeze the bad API. Give `./compat` a deprecation window and a removal major.
+- **Shadow-presence caching:** not implemented on purpose. `attachShadow` emits no mutation record, so a cached "this document has no shadow roots" answer would silently hide elements added later. Instead each query runs one allocation-light scan (`collectQueryContextRoots`) that also yields the XPath context roots, and comma groups reuse it.
+- **Universal type-positional pseudos in a shadow scope:** XPath 1.0 cannot express "first sibling with the same tag as the context node" — `current()` is XSLT-only and both Chrome's `document.evaluate` and the `xpath` package reject it. Terminal wildcard compounds (`.item:first-of-type`, `*:nth-of-type(2n+1)`, `:last-of-type`) are therefore stripped from the selector and post-filtered against same-tag sibling indexes for both query paths. A type-positional pseudo in a non-terminal compound (`.item:first-of-type > span`) still falls back to first-child semantics on the XPath path; the native CSS fast path is exact whenever the scope has no shadow roots. Supporting that case needs per-step candidate filtering, not a different XPath expression.
 
 ## 9. First three concrete tasks
 

@@ -1,4 +1,5 @@
 import type { BrowserAction, SelectorWaitState, StorageSystem } from '../types'
+import type { DomAdapter } from '../core/dom-adapter'
 import { Selector } from '../parser/selector'
 import {
   isElementVisible,
@@ -139,24 +140,46 @@ export function validateActions(actions: BrowserAction[]): void {
   }
 }
 
-function resolveTargetElement(
+function createTargetSelector(
   doc: Document,
-  target: string,
   adaptive: boolean,
   storage?: StorageSystem,
-): Element | null {
-  const page = new Selector({
+  dom?: DomAdapter,
+): Selector {
+  return new Selector({
     root: doc.documentElement,
     url: doc.location?.href ?? 'default',
     adaptive,
     _storage: storage,
+    dom,
   })
+}
+
+function resolveTargetElementFrom(
+  page: Selector,
+  target: string,
+  adaptive: boolean,
+): Element | null {
   if (target.startsWith('//') || target.startsWith('.//')) {
     const res = page.xpath(target, { adaptive, autoSave: adaptive })
     return res.first?.rawNode ?? null
   }
   const res = page.css(target, { adaptive, autoSave: adaptive })
   return res.first?.rawNode ?? null
+}
+
+function resolveTargetElement(
+  doc: Document,
+  target: string,
+  adaptive: boolean,
+  storage?: StorageSystem,
+  dom?: DomAdapter,
+): Element | null {
+  return resolveTargetElementFrom(
+    createTargetSelector(doc, adaptive, storage, dom),
+    target,
+    adaptive,
+  )
 }
 
 async function waitForDocumentLoad(
@@ -274,13 +297,15 @@ async function waitForElementCondition(
   adaptive = false,
   storage?: StorageSystem,
   signal?: AbortSignal,
+  dom?: DomAdapter,
 ): Promise<Element | null> {
   if (signal?.aborted) {
     throw signal.reason ?? new Error('Aborted')
   }
 
+  const page = createTargetSelector(doc, adaptive, storage, dom)
   const check = (): { met: true; el: Element | null } | { met: false } => {
-    const el = resolveTargetElement(doc, target, adaptive, storage)
+    const el = resolveTargetElementFrom(page, target, adaptive)
     if (state === 'attached' && el) return { met: true, el }
     if (state === 'detached' && !el) return { met: true, el: null }
     if (state === 'visible' && el && isElementVisible(el)) return { met: true, el }
@@ -304,7 +329,7 @@ async function waitForElementCondition(
       return current.met ? current : null
     },
     timeout,
-    25,
+    200,
     signal,
   )
   const result = await promise
@@ -318,6 +343,7 @@ export interface RunBrowserActionsOptions {
   document?: Document
   adaptive?: boolean
   storage?: StorageSystem
+  dom?: DomAdapter
   slowly?: boolean
   signal?: AbortSignal
 }
@@ -330,6 +356,7 @@ export async function runBrowserActions(
   const doc = options?.document ?? document
   const adaptive = options?.adaptive ?? true
   const storage = options?.storage
+  const dom = options?.dom
   const slowly = options?.slowly ?? false
 
   for (let i = 0; i < actions.length; i++) {
@@ -379,6 +406,7 @@ export async function runBrowserActions(
             adaptive,
             storage,
             actionSignal,
+            dom,
           )
           break
         case 'wait_load':
@@ -408,7 +436,7 @@ export async function runBrowserActions(
         case 'click': {
           let targetEl: Element | null = null
           if (action.target) {
-            targetEl = resolveTargetElement(doc, action.target, adaptive, storage)
+            targetEl = resolveTargetElement(doc, action.target, adaptive, storage, dom)
             if (!targetEl) {
               throw new Error(`Target '${action.target}' not found`)
             }
@@ -416,20 +444,66 @@ export async function runBrowserActions(
             targetEl = doc.elementFromPoint(action.x, action.y)
           }
           if (targetEl) {
+            const MouseEventCtor =
+              doc.defaultView?.MouseEvent ??
+              (typeof MouseEvent !== 'undefined' ? MouseEvent : undefined)
+            if (!MouseEventCtor) {
+              throw new Error('MouseEvent is not available in this document')
+            }
+            const rect =
+              typeof targetEl.getBoundingClientRect === 'function'
+                ? targetEl.getBoundingClientRect()
+                : null
+            const clientX = action.x ?? (rect ? rect.left + rect.width / 2 : 0)
+            const clientY = action.y ?? (rect ? rect.top + rect.height / 2 : 0)
+            const buttonName = ('button' in action ? action.button : undefined) ?? 'left'
+            const button = buttonName === 'right' ? 2 : buttonName === 'middle' ? 1 : 0
+            const eventInit: MouseEventInit = {
+              bubbles: true,
+              cancelable: true,
+              button,
+              clientX,
+              clientY,
+              view: doc.defaultView,
+            }
+
             if (action.type === 'move') {
-              targetEl.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-              targetEl.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }))
+              targetEl.dispatchEvent(new MouseEventCtor('mouseover', eventInit))
+              targetEl.dispatchEvent(new MouseEventCtor('mousemove', eventInit))
             } else {
               const count = action.click_count ?? 1
+              const delay = action.delay ?? 0
               for (let c = 0; c < count; c++) {
-                if (targetEl instanceof HTMLElement) {
-                  targetEl.click()
+                if (actionSignal?.aborted) {
+                  throw actionSignal.reason ?? new Error('Aborted')
+                }
+                if (c > 0 && delay > 0) {
+                  await new Promise((resolve) => setTimeout(resolve, delay))
+                }
+                targetEl.dispatchEvent(
+                  new MouseEventCtor('mousedown', { ...eventInit, detail: c + 1 }),
+                )
+                targetEl.dispatchEvent(
+                  new MouseEventCtor('mouseup', { ...eventInit, detail: c + 1 }),
+                )
+                if (buttonName === 'right') {
+                  targetEl.dispatchEvent(
+                    new MouseEventCtor('contextmenu', { ...eventInit, detail: c + 1 }),
+                  )
+                } else if (buttonName === 'middle') {
+                  targetEl.dispatchEvent(
+                    new MouseEventCtor('auxclick', { ...eventInit, detail: c + 1 }),
+                  )
                 } else {
-                  targetEl.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+                  targetEl.dispatchEvent(
+                    new MouseEventCtor('click', { ...eventInit, detail: c + 1 }),
+                  )
                 }
               }
-              if (count === 2) {
-                targetEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+              if (count === 2 && buttonName === 'left') {
+                targetEl.dispatchEvent(
+                  new MouseEventCtor('dblclick', { ...eventInit, detail: 2 }),
+                )
               }
             }
           }
@@ -441,6 +515,7 @@ export async function runBrowserActions(
             action.target,
             adaptive,
             storage,
+            dom,
           )
           if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
@@ -463,6 +538,7 @@ export async function runBrowserActions(
             action.target,
             adaptive,
             storage,
+            dom,
           )
           if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
@@ -481,6 +557,7 @@ export async function runBrowserActions(
             action.target,
             adaptive,
             storage,
+            dom,
           )
           if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)

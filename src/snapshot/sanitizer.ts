@@ -1,6 +1,10 @@
 import { Selector } from '../parser/selector'
 
-const HIDING_DECLARATIONS = new Set(['display:none', 'visibility:hidden'])
+const HIDING_DECLARATIONS = new Set([
+  'display:none',
+  'visibility:hidden',
+  'visibility:collapse',
+])
 const ZERO_HIDING_PROPERTIES = new Set([
   'opacity',
   'font-size',
@@ -19,10 +23,11 @@ const CONTROL_CHARS_PATTERN = /[\x00-\x08\x0b\x0c\x0e-\x1f]/g
 
 export function isHiddenElement(element: Element): boolean {
   const tag = element.tagName.toLowerCase()
-  if (tag === 'template' || element.getAttribute('aria-hidden') === 'true') {
-    return true
-  }
-  if (tag === 'slot' && element.hasAttribute('hidden')) {
+  if (
+    tag === 'template' ||
+    element.getAttribute('aria-hidden') === 'true' ||
+    element.hasAttribute('hidden')
+  ) {
     return true
   }
   let style = (element.getAttribute('style') ?? '').replace(CSS_NEWLINE_PATTERN, '\n')
@@ -83,7 +88,7 @@ export function sanitizeElementForAi(root: Element): Element {
   for (const node of Array.from(noiseTags)) {
     node.parentNode?.removeChild(node)
   }
-  const candidates = clone.querySelectorAll('[style], [aria-hidden="true"], slot[hidden], template')
+  const candidates = clone.querySelectorAll('[style], [aria-hidden="true"], [hidden], template')
   for (const node of Array.from(candidates)) {
     if (isHiddenElement(node)) {
       node.parentNode?.removeChild(node)
@@ -135,6 +140,34 @@ function nodeToMarkdown(node: Node): string {
       const label = childrenMd.trim()
       return href ? `[${label}](${href})` : label
     }
+    case 'img': {
+      const src = el.getAttribute('src')
+      const alt = el.getAttribute('alt') ?? ''
+      return src ? `![${alt}](${src})` : alt
+    }
+    case 'tr': {
+      const cells: string[] = []
+      for (const child of Array.from(el.children)) {
+        const cellTag = child.tagName.toLowerCase()
+        if (cellTag === 'td' || cellTag === 'th') {
+          cells.push(
+            nodeToMarkdown(child)
+              .trim()
+              .replace(/\s*\n\s*/g, ' '),
+          )
+        }
+      }
+      return `\n| ${cells.join(' | ')} |`
+    }
+    case 'table':
+      return `\n${childrenMd.replace(/^\n+/, '').trim()}\n`
+    case 'thead':
+    case 'tbody':
+    case 'tfoot':
+      return childrenMd
+    case 'th':
+    case 'td':
+      return childrenMd.trim()
     case 'li':
       return `\n- ${childrenMd.trim()}`
     case 'ul':

@@ -587,6 +587,29 @@ describe('12 Review Test-Gaps Suite', () => {
       expect(md).not.toContain('Hidden trap')
     })
 
+    it('treats the hidden attribute on any tag and visibility:collapse as hidden', () => {
+      const wrapper = document.createElement('div')
+      wrapper.innerHTML = `
+        <p>Visible copy</p>
+        <div hidden><p>Attribute-hidden payload</p></div>
+        <span hidden>Inline-hidden payload</span>
+        <section style="visibility: collapse"><p>Collapsed payload</p></section>
+        <div style="display: none"><p>Display-hidden payload</p></div>
+      `
+
+      const markdown = htmlToMarkdown(wrapper)
+      expect(markdown).toContain('Visible copy')
+      expect(markdown).not.toContain('Attribute-hidden payload')
+      expect(markdown).not.toContain('Inline-hidden payload')
+      expect(markdown).not.toContain('Collapsed payload')
+      expect(markdown).not.toContain('Display-hidden payload')
+
+      const hidden = document.createElement('div')
+      hidden.setAttribute('hidden', '')
+      hidden.innerHTML = '<p>Root payload</p>'
+      expect(htmlToMarkdown(hidden)).toBe('')
+    })
+
     it('handles cross-iframe elements in isElementVisible, setNativeInputValue, and setNativeCheckboxValue', () => {
       const iframe = document.createElement('iframe')
       document.body.appendChild(iframe)

@@ -17,6 +17,7 @@ export function waitUntilCondition<R>(
   pollMs = 200,
   signal?: AbortSignal,
   adapter?: DomAdapter | null,
+  debounceMs = 10,
 ): WaitUntilHandle<R> {
   let cancel = () => {}
 
@@ -78,12 +79,20 @@ export function waitUntilCondition<R>(
       return false
     }
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
     let observer: MutationObserverLike | null = null
     observer = tryCreateDomObserver(adapter, () => {
       if (settled) return
-      if (!checkNow() && observer) {
-        observeDeepTree(doc, observer, observedRoots)
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer)
       }
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null
+        if (settled) return
+        if (!checkNow() && observer) {
+          observeDeepTree(doc, observer, observedRoots)
+        }
+      }, debounceMs)
     })
 
     const intervalId = setInterval(() => {
@@ -97,6 +106,10 @@ export function waitUntilCondition<R>(
     cleanup = () => {
       clearInterval(intervalId)
       clearTimeout(timeoutId)
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer)
+        debounceTimer = null
+      }
       observer?.disconnect()
     }
 

@@ -20,10 +20,15 @@ import { ElementHandleError } from '../core/errors'
 import { generateElementSelector } from '../core/mixins'
 import { relocateHighestScoring } from '../core/relocator'
 import { StorageTools, getElementDirectText } from '../core/storage-tools'
-import { cssToXpath, splitCssSelectors } from '../core/translator'
+import {
+  cssToXpath,
+  extractTypePositionFilters,
+  splitCssSelectors,
+} from '../core/translator'
 import { cleanSpaces } from '../core/utils'
 import {
   collectDeepElements,
+  collectQueryContextRoots,
   getDeepParentElement,
 } from '../core/shadow-dom'
 import { AutoStorageSystem, MemoryStorageSystem, StorageSystemMixin } from '../storage'
@@ -49,11 +54,14 @@ import {
   type InternalNodeWrapper,
 } from './html-loader'
 import {
+  filterByTypePosition,
   interpolateCssSelector,
   interpolateXPathSelector,
   resolveCssQuerySettings,
   resolveXPathQuerySettings,
   runXPathQuery,
+  tryNativeCssQuery,
+  type CssQuerySettings,
 } from './query-runner'
 import { Selectors } from './selectors'
 
@@ -632,6 +640,7 @@ export class Selector {
       fingerprint,
       this._wrapper.element,
       percentage,
+      this._pierceShadow,
     )
     if (bestMatches.length > 0) {
       return asSelectors ? this.convertElements(bestMatches) : bestMatches
@@ -673,31 +682,148 @@ export class Selector {
       { adaptive: this._adaptiveEnabled, autoSave: this._adaptiveEnabled },
     )
     const interpolatedSelector = interpolateCssSelector(selector, settings.variables)
+    const contextRoots = collectQueryContextRoots(
+      this._wrapper.element,
+      this._pierceShadow,
+    )
 
     if (!this._adaptiveEnabled || !interpolatedSelector.includes(',')) {
-      return this.xpath(
-        cssToXpath(interpolatedSelector),
-        settings.identifier || interpolatedSelector,
-        settings.adaptive,
-        settings.autoSave,
-        settings.percentage,
-        settings.variables,
+      return this.runCssQuery(
+        interpolatedSelector,
+        settings,
+        this._wrapper.element,
+        contextRoots,
       )
     }
 
+    const branches = splitCssSelectors(interpolatedSelector)
     const combinedResults = new Selectors()
-    for (const singleSelector of splitCssSelectors(interpolatedSelector)) {
-      const partResults = this.xpath(
-        cssToXpath(singleSelector),
-        settings.identifier || singleSelector,
-        settings.adaptive,
-        settings.autoSave,
-        settings.percentage,
-        settings.variables,
+    let sawDirectMatch = false
+
+    for (const singleSelector of branches) {
+      const branchResults = this.runCssQuery(
+        singleSelector,
+        { ...settings, adaptive: false, autoSave: false },
+        this._wrapper.element,
+        contextRoots,
       )
-      combinedResults.push(...partResults)
+      if (branchResults.length === 0) continue
+      sawDirectMatch = true
+      if (this._adaptiveEnabled && settings.autoSave) {
+        const target = branchResults[0]?.rawNode ?? null
+        if (target) {
+          // With an explicit identifier all branches share one fingerprint;
+          // keep the first match instead of letting later branches overwrite it.
+          if (settings.identifier) {
+            if (combinedResults.length === 0) {
+              this.save(target, settings.identifier)
+            }
+          } else {
+            this.save(target, singleSelector)
+          }
+        }
+      }
+      combinedResults.push(...branchResults)
     }
-    return combinedResults
+
+    if (sawDirectMatch) {
+      const seen = new Set<Element>()
+      const deduped = new Selectors()
+      for (const item of combinedResults) {
+        const node = item.rawNode
+        if (node && seen.has(node)) continue
+        if (node) seen.add(node)
+        deduped.push(item)
+      }
+      return deduped
+    }
+
+    if (!settings.adaptive) {
+      return combinedResults
+    }
+
+    return this.finalizeQuery(
+      [],
+      settings,
+      branches[0] ?? interpolatedSelector,
+    )
+  }
+
+  private runCssQuery(
+    cssSelector: string,
+    settings: CssQuerySettings,
+    rootElement: Element,
+    contextRoots: readonly Element[],
+  ): Selectors {
+    const typePosition = extractTypePositionFilters(cssSelector)
+    const executableSelector = typePosition ? typePosition.selector : cssSelector
+    const xpathSelector = cssToXpath(executableSelector)
+    const nativeMatches = tryNativeCssQuery(rootElement, executableSelector, contextRoots)
+    if (nativeMatches) {
+      const filtered = typePosition
+        ? filterByTypePosition(nativeMatches, typePosition.filters)
+        : nativeMatches
+      return this.finalizeQuery(filtered, settings, cssSelector)
+    }
+
+    const matchedWrappers = runXPathQuery(
+      rootElement,
+      xpathSelector,
+      this._pierceShadow,
+      executableSelector,
+      this._dom,
+      contextRoots,
+    )
+    const filtered = typePosition
+      ? filterByTypePosition(matchedWrappers, typePosition.filters)
+      : matchedWrappers
+    return this.finalizeQuery(filtered, settings, cssSelector)
+  }
+
+  private finalizeQuery(
+    matchedWrappers: Array<Element | InternalNodeWrapper>,
+    settings: {
+      identifier: string
+      adaptive: boolean
+      autoSave: boolean
+      percentage: number
+    },
+    fallbackIdentifier: string,
+  ): Selectors {
+    const identifier = settings.identifier || fallbackIdentifier
+
+    if (matchedWrappers.length > 0) {
+      if (this._adaptiveEnabled && settings.autoSave) {
+        const firstItem = matchedWrappers[0]
+        let targetEl: Element | null | undefined
+        if ('kind' in firstItem) {
+          targetEl = firstItem.kind === 'element' ? firstItem.element : firstItem.parentElement
+        } else {
+          targetEl = firstItem
+        }
+        if (targetEl) {
+          this.save(targetEl, identifier)
+        }
+      }
+      return this.convertElements(matchedWrappers)
+    }
+
+    if (this._adaptiveEnabled && settings.adaptive) {
+      const elementData = this.retrieve(identifier)
+      if (elementData) {
+        const relocatedElements = this.relocate(
+          elementData,
+          settings.percentage,
+          false,
+        )
+        if (relocatedElements.length > 0 && settings.autoSave) {
+          this.save(relocatedElements[0], identifier)
+        }
+        return this.convertElements(relocatedElements)
+      }
+    }
+
+    return new Selectors()
   }
 
   xpath(
@@ -740,39 +866,7 @@ export class Selector {
       selector,
       this._dom,
     )
-
-    if (matchedWrappers.length > 0) {
-      if (this._adaptiveEnabled && settings.autoSave) {
-        const firstItem = matchedWrappers[0]
-        let targetEl: Element | null | undefined
-        if ('kind' in firstItem) {
-          targetEl = firstItem.kind === 'element' ? firstItem.element : firstItem.parentElement
-        } else {
-          targetEl = firstItem
-        }
-        if (targetEl) {
-          this.save(targetEl, settings.identifier || selector)
-        }
-      }
-      return this.convertElements(matchedWrappers)
-    }
-
-    if (this._adaptiveEnabled && settings.adaptive) {
-      const elementData = this.retrieve(settings.identifier || selector)
-      if (elementData) {
-        const relocatedElements = this.relocate(
-          elementData,
-          settings.percentage,
-          false,
-        )
-        if (relocatedElements.length > 0 && settings.autoSave) {
-          this.save(relocatedElements[0], settings.identifier || selector)
-        }
-        return this.convertElements(relocatedElements)
-      }
-    }
-
-    return new Selectors()
+    return this.finalizeQuery(matchedWrappers, settings, selector)
   }
 
   findAll(...args: unknown[]): Selectors {

@@ -5,11 +5,17 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { chromium, type Browser, type Page } from 'playwright'
 import { generateMutatedPage } from '../pages/generator'
+import { resolveDynamicParams } from '../lib/request-params'
+import { resolvePageFile } from '../lib/page-file'
 import { TARGET_ELEMENTS } from '../lib/targets'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const BENCH_DIR = path.resolve(__dirname, '..')
+
+function escapeModuleSource(source: string): string {
+  return source.replace(/<\/script/gi, '<\\/script')
+}
 
 export interface ServerInstance {
   port: number
@@ -61,7 +67,9 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
   const browser: Browser = await chromium.launch({ channel: 'chrome', headless: true })
   const workerPage: Page = await browser.newPage()
 
-  const scraplingBundle = fs.readFileSync(path.resolve(BENCH_DIR, '../dist/index.mjs'), 'utf8')
+  const scraplingBundle = escapeModuleSource(
+    fs.readFileSync(path.resolve(BENCH_DIR, '../dist/index.mjs'), 'utf8'),
+  )
   await workerPage.setContent(`
     <!DOCTYPE html>
     <html>
@@ -76,6 +84,18 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
     </html>
   `)
   await workerPage.waitForFunction(() => (window as any).__scraplingReady === true)
+
+  // The bench reuses a single page; serialize evaluations so concurrent HTTP
+  // requests cannot interleave their documents and storage state.
+  let workerQueue: Promise<unknown> = Promise.resolve()
+  const evaluateOnWorker = <T>(pageFunction: (arg: any) => T, arg: any): Promise<T> => {
+    const run = workerQueue.then(() => workerPage.evaluate(pageFunction, arg))
+    workerQueue = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run as Promise<T>
+  }
 
   app.get('/', (c) => {
     const html = fs.readFileSync(path.join(BENCH_DIR, 'public/index.html'), 'utf8')
@@ -96,8 +116,8 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
 
   app.get('/pages/:filename', (c) => {
     const filename = c.req.param('filename')
-    const filePath = path.join(BENCH_DIR, 'pages', filename)
-    if (fs.existsSync(filePath)) {
+    const filePath = resolvePageFile(BENCH_DIR, filename)
+    if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const html = fs.readFileSync(filePath, 'utf8')
       return c.html(html)
     }
@@ -105,9 +125,17 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
   })
 
   app.get('/dynamic', (c) => {
-    const seed = c.req.query('seed') || Math.random().toString(36).substring(2, 6)
-    const framework = c.req.query('framework') as any
-    const html = generateMutatedPage({ hashSeed: seed, framework })
+    const params = resolveDynamicParams({
+      seed: c.req.query('seed'),
+      framework: c.req.query('framework'),
+    })
+    if (!params.ok) {
+      return c.text(params.error, 400)
+    }
+    const html = generateMutatedPage({
+      hashSeed: params.seed,
+      framework: params.framework,
+    })
     return c.html(html)
   })
 
@@ -122,8 +150,8 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
     const baseHtml = fs.readFileSync(path.join(BENCH_DIR, 'pages/1-indeed-react-emotion.html'), 'utf8')
     const mutatedHtml = fs.readFileSync(path.join(BENCH_DIR, 'pages', fw.pageFile), 'utf8')
 
-    const result = await workerPage.evaluate(
-      ({ baseHtml, mutatedHtml, target }) => {
+    const result = await evaluateOnWorker(
+      ({ baseHtml, mutatedHtml, target }: { baseHtml: string; mutatedHtml: string; target: any }) => {
         const { Selector, MemoryStorageSystem, StorageTools, calculateSimilarityScore } = (window as any).Scrapling
         const storage = new MemoryStorageSystem({ url: 'https://indeed.com/bench' })
 
@@ -220,8 +248,8 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
     for (const fw of FRAMEWORKS) {
       const mutatedHtml = fs.readFileSync(path.join(BENCH_DIR, 'pages', fw.pageFile), 'utf8')
 
-      const fwResult = await workerPage.evaluate(
-        ({ baseHtml, mutatedHtml, fw, targets }) => {
+      const fwResult = await evaluateOnWorker(
+        ({ baseHtml, mutatedHtml, fw, targets }: { baseHtml: string; mutatedHtml: string; fw: any; targets: any[] }) => {
           const { Selector, MemoryStorageSystem, StorageTools, calculateSimilarityScore } = (window as any).Scrapling
           const storage = new MemoryStorageSystem({ url: `https://indeed.com/${fw.id}` })
 
@@ -249,11 +277,13 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
           const results = []
           for (const target of targets) {
             const tradResult = mutatedPage.css(target.initialSelector, { adaptive: false })
+            const queryStart = performance.now()
             const adaptResult = mutatedPage.css(target.initialSelector, {
               identifier: target.id,
               adaptive: true,
               percentage: 30,
             })
+            const durationMs = Math.round((performance.now() - queryStart) * 100) / 100
 
             const adaptiveFound = adaptResult.length > 0
             let confidenceScore = 0
@@ -277,6 +307,7 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
               confidenceScore,
               relocatedTag,
               relocatedText: relocatedText.slice(0, 60),
+              durationMs,
             })
           }
 

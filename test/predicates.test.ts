@@ -522,4 +522,36 @@ describe('Custom Save/Read Persistence Predicates & LocalStorage Integration', (
 
     container.remove()
   })
+
+  it('keeps onRelocate subscribers across configure()', async () => {
+    const container = document.createElement('div')
+    container.innerHTML =
+      '<div class="card"><button class="old-apply">Apply now</button></div>'
+    document.body.appendChild(container)
+
+    const scraplingInstance = createScrapling({
+      document,
+      url: 'https://configure.example.com',
+      percentage: 20,
+    })
+    const events: string[] = []
+    scraplingInstance.onRelocate((_old, element) => {
+      events.push(element.textContent ?? '')
+    })
+
+    const button = container.querySelector('button') as HTMLElement
+    scraplingInstance.remember(button, 'apply')
+    scraplingInstance.configure({ percentage: 20, debounceMs: 5 })
+
+    container.innerHTML =
+      '<div class="card"><a class="new-apply" href="/apply">Apply now</a></div>'
+    const restored = scraplingInstance.restore('apply', 20, container)
+
+    expect(restored).not.toBeNull()
+    expect(restored?.textContent).toBe('Apply now')
+    expect(events).toEqual(['Apply now'])
+
+    await scraplingInstance.manager.destroy()
+    container.remove()
+  })
 })

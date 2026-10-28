@@ -280,4 +280,20 @@ describe('Selector & Selectors Core', () => {
     expect(() => page.css('4 ayo')).toThrow(SelectorSyntaxError)
     expect(() => page.xpath('4 ayo')).toThrow(SelectorSyntaxError)
   })
+
+  it('escapes text and attributes in prettify without closing void elements', () => {
+    const wrapper = document.createElement('div')
+    wrapper.setAttribute('title', 'a "b" & <c>')
+    const image = document.createElement('img')
+    image.setAttribute('src', '/logo.png?a=1&b=2')
+    const paragraph = document.createElement('p')
+    paragraph.textContent = '1 < 2 & 3 > 0'
+    wrapper.append(image, paragraph)
+
+    const pretty = new Selector(wrapper).prettify().toString()
+    expect(pretty).toContain('title="a &quot;b&quot; &amp; &lt;c&gt;"')
+    expect(pretty).toContain('<img src="/logo.png?a=1&amp;b=2">')
+    expect(pretty).not.toContain('</img>')
+    expect(pretty).toContain('1 &lt; 2 &amp; 3 &gt; 0')
+  })
 })

@@ -124,5 +124,47 @@ describe('Adaptive Element Relocation & Storage', () => {
     expect(dict.parent_name).toBe('div')
     expect(dict.children).toEqual(['b', 'i'])
     expect(dict.siblings).toEqual(['p'])
+    // Layout reads are opt-in: the default fingerprint must not force a reflow.
+    expect(dict.rect).toBeUndefined()
+  })
+
+  it('honours adaptive options passed through a Selectors collection', () => {
+    const oldPage = new Selector(
+      '<div class="card"><span class="old-price">$42</span></div>',
+      { url: 'example.com', adaptive: true },
+    )
+    const newPage = new Selector(
+      '<div class="card"><span class="new-price">$42</span></div>',
+      { url: 'example.com', adaptive: true },
+    )
+
+    oldPage.css('.card').css('.old-price', { identifier: 'price', autoSave: true })
+    const relocated = newPage
+      .css('.card')
+      .css('.old-price', { identifier: 'price', adaptive: true })
+
+    expect(relocated.length).toBe(1)
+    expect(relocated[0].text.toString()).toBe('$42')
+  })
+
+  it('does not duplicate a comma-group match after relocation', () => {
+    const oldPage = new Selector(
+      '<div class="card"><h1 class="old">Hero</h1></div>',
+      { url: 'example.com', adaptive: true },
+    )
+    const newPage = new Selector(
+      '<div class="card"><h2 class="fallback">Hero</h2></div>',
+      { url: 'example.com', adaptive: true },
+    )
+
+    oldPage.css('h1.old', { identifier: 'hero-title', autoSave: true })
+    const result = newPage.css('h1.old, h2.fallback', {
+      identifier: 'hero-title',
+      adaptive: true,
+      autoSave: true,
+    })
+
+    expect(result.length).toBe(1)
+    expect(result[0].tag).toBe('h2')
   })
 })

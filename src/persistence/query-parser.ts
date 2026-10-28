@@ -1,4 +1,5 @@
 import { cssToXpath } from '../core/translator'
+import { interpolateCssSelector } from '../parser/query-runner'
 import type { AdaptiveQueryOptions } from '../types'
 
 export type ElementFilter<T extends HTMLElement = HTMLElement> = (
@@ -21,11 +22,6 @@ export interface WaitForElementOptions<T extends HTMLElement = HTMLElement> {
   identifier?: string
 }
 
-/**
- * Ask the DOM whether it accepts the string as CSS. Returns `null` when the
- * environment has no `querySelector` to probe with (Node.js without a DOM), so
- * the caller can fall back to the bundled CSS-to-XPath translator.
- */
 function probeCssSupport(query: string, doc: Document | null): boolean | null {
   if (!doc || typeof doc.createDocumentFragment !== 'function') {
     return null
@@ -47,10 +43,6 @@ function probeCssSupport(query: string, doc: Document | null): boolean | null {
   }
 }
 
-/**
- * Offline CSS check. `cssToXpath` is the exact translator every CSS query goes
- * through, so "translatable" is what "runnable as CSS" means for this library.
- */
 function isTranslatableCssSelector(query: string): boolean {
   try {
     cssToXpath(query)
@@ -64,6 +56,7 @@ export function detectQueryMode(
   query: string,
   explicitMode?: 'auto' | 'css' | 'xpath' | 'text',
   scopeDocument?: Document | null,
+  variables?: Record<string, string | number>,
 ): 'css' | 'xpath' | 'text' {
   if (explicitMode && explicitMode !== 'auto') {
     return explicitMode
@@ -75,13 +68,16 @@ export function detectQueryMode(
   if (trimmed.startsWith('text=') || trimmed.startsWith('text:')) {
     return 'text'
   }
+  const candidate =
+    variables && Object.keys(variables).length > 0
+      ? interpolateCssSelector(trimmed, variables)
+      : trimmed
   const doc =
     scopeDocument ?? (typeof document !== 'undefined' ? document : null)
-  const cssSupported = probeCssSupport(trimmed, doc)
-  if (cssSupported !== null) {
-    return cssSupported ? 'css' : 'text'
+  if (probeCssSupport(candidate, doc) === true) {
+    return 'css'
   }
-  return isTranslatableCssSelector(trimmed) ? 'css' : 'text'
+  return isTranslatableCssSelector(candidate) ? 'css' : 'text'
 }
 
 export function normalizeTextQuery(query: string): string {

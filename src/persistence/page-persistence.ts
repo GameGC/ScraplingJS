@@ -61,6 +61,7 @@ export interface PagePersistenceManagerOptions {
   onError?: StorageErrorHandler
   storageCapacity?: number
   ignoreAttributes?: readonly string[]
+  pierceShadow?: boolean
 }
 
 export function resolveDocumentSource(explicit?: Document | null): Document {
@@ -79,6 +80,7 @@ export class PagePersistenceManager {
   readonly debounceMs: number
   readonly defaultPercentage: number
   readonly ignoreAttributes: readonly string[]
+  readonly pierceShadow: boolean
   private readonly activeStoppers = new Set<() => void>()
   private readonly relocateListeners = new Set<RelocationCallback>()
   private readonly notifiedElements = new WeakMap<Element, Set<string>>()
@@ -94,6 +96,7 @@ export class PagePersistenceManager {
     this.debounceMs = options?.debounceMs ?? 50
     this.defaultPercentage = options?.percentage ?? 45
     this.ignoreAttributes = options?.ignoreAttributes ?? ['href', 'src', 'id']
+    this.pierceShadow = options?.pierceShadow ?? true
     this.storage =
       options?.storage ??
       new MemoryStorageSystem({
@@ -178,7 +181,7 @@ export class PagePersistenceManager {
       root: targetRoot,
       url: this.url,
       adaptive: true,
-      pierceShadow: true,
+      pierceShadow: this.pierceShadow,
       _storage: this.storage,
       dom: this.dom,
     })
@@ -282,7 +285,7 @@ export class PagePersistenceManager {
     const rootSelector = this.createRootSelector(options?.root)
 
     for (const q of queries) {
-      const mode = detectQueryMode(q, options?.mode, this.doc)
+      const mode = detectQueryMode(q, options?.mode, this.doc, options?.variables)
       const rawMatches = this.querySingleDirect(
         rootSelector,
         q,
@@ -426,6 +429,8 @@ export class PagePersistenceManager {
       resolveScopeRoot(root, this.doc),
       percentage,
       filter,
+      this.pierceShadow,
+      this.ignoreAttributes,
     )
     if (!match) {
       return null
@@ -458,6 +463,7 @@ export class PagePersistenceManager {
       percentage,
       this.ignoreAttributes,
       filter,
+      this.pierceShadow,
     )
 
     return matches.map((match) => ({
@@ -484,33 +490,42 @@ export class PagePersistenceManager {
     const identifier = options.identifier ?? options.selector
     const percentage = options.percentage ?? this.defaultPercentage
     const autoUpdate = options.autoUpdateFingerprint ?? true
+    const filter = options.filter
+    const variables = options.variables
+    const rootSelector = this.createRootSelector(options.root)
     let currentElement: Element | null = null
     let stopped = false
 
+    const directMatchesInScope = (): Selectors => {
+      const matches = this.querySingleDirect(
+        rootSelector,
+        options.selector,
+        mode,
+        identifier,
+        variables,
+      )
+      if (!filter) return matches
+      return new Selectors(
+        matches.filter((item) => item.rawNode && filter(item.rawNode as HTMLElement)),
+      )
+    }
+
     const evaluateNow = () => {
-      const rootSelector = this.page
       if (currentElement && isDeepConnected(this.doc.documentElement, currentElement)) {
-        const directMatches = this.querySingleDirect(
-          rootSelector,
-          options.selector,
-          mode,
-          identifier,
-        )
+        const directMatches = directMatchesInScope()
         if (directMatches.length > 0 && directMatches[0].rawNode === currentElement) {
           return
         }
       }
 
-      const direct = this.querySingleDirect(
-        rootSelector,
-        options.selector,
-        mode,
-        identifier,
-      )
+      const direct = directMatchesInScope()
 
       if (direct.length > 0 && direct[0].rawNode) {
         const foundEl = direct[0].rawNode
         this.storage.save(foundEl, identifier)
+        // The selector works again: allow a future breakage to notify listeners
+        // for this element instead of staying silent forever.
+        this.notifiedElements.get(foundEl)?.delete(identifier)
         if (foundEl !== currentElement) {
           currentElement = foundEl
           options.onResolved?.(foundEl as HTMLElement, false, 100)
@@ -520,7 +535,12 @@ export class PagePersistenceManager {
 
       const oldFingerprint = rootSelector.retrieve(identifier)
       if (oldFingerprint) {
-        const relocated = this.relocateWithScore(oldFingerprint, percentage)
+        const relocated = this.relocateWithScore(
+          oldFingerprint,
+          percentage,
+          options.root,
+          filter,
+        )
         if (relocated) {
           if (autoUpdate) {
             this.emitRelocation(
@@ -545,6 +565,7 @@ export class PagePersistenceManager {
       }
 
       if (currentElement !== null) {
+        this.notifiedElements.get(currentElement)?.delete(identifier)
         currentElement = null
         options.onLost?.()
       }
@@ -608,6 +629,7 @@ export class PagePersistenceManager {
       pollMs,
       undefined,
       this.dom,
+      this.debounceMs,
     )
     this.activeStoppers.add(cancel)
     promise.then(
@@ -623,11 +645,14 @@ export class PagePersistenceManager {
     }
     this.activeStoppers.clear()
     this.relocateListeners.clear()
-    if (typeof this.storage.flush === 'function') {
-      await this.storage.flush()
-    }
-    if (typeof this.storage.close === 'function') {
-      await this.storage.close()
+    try {
+      if (typeof this.storage.flush === 'function') {
+        await this.storage.flush()
+      }
+    } finally {
+      if (typeof this.storage.close === 'function') {
+        await this.storage.close()
+      }
     }
   }
 }

@@ -27,21 +27,30 @@ export class Selectors extends Array<Selector> {
     variables?: Record<string, string | number>,
   ): Selectors {
     let identifier = ''
+    let isAdaptive: boolean | undefined
     let isAutoSave = autoSave
     let minPercentage = percentage
     let vars = variables
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
       identifier = identifierOrOptions.identifier ?? ''
+      isAdaptive = identifierOrOptions.adaptive
       isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? false
       minPercentage = identifierOrOptions.percentage ?? 40
-      vars = identifierOrOptions.variables
+      vars = identifierOrOptions.variables ?? variables
     } else {
       identifier = identifierOrOptions
     }
 
     const nested = Array.from(this, (n) =>
-      n.xpath(selector, identifier || selector, false, isAutoSave, minPercentage, vars),
+      n.xpath(
+        selector,
+        identifier || selector,
+        isAdaptive,
+        isAutoSave,
+        minPercentage,
+        vars,
+      ),
     )
     return new Selectors(flatten(nested))
   }
@@ -54,21 +63,30 @@ export class Selectors extends Array<Selector> {
     variables?: Record<string, string | number>,
   ): Selectors {
     let identifier = ''
+    let isAdaptive: boolean | undefined
     let isAutoSave = autoSave
     let minPercentage = percentage
     let vars = variables
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
       identifier = identifierOrOptions.identifier ?? ''
+      isAdaptive = identifierOrOptions.adaptive
       isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? false
       minPercentage = identifierOrOptions.percentage ?? 40
-      vars = identifierOrOptions.variables
+      vars = identifierOrOptions.variables ?? variables
     } else {
       identifier = identifierOrOptions
     }
 
     const nested = Array.from(this, (n) =>
-      n.css(selector, identifier || selector, false, isAutoSave, minPercentage, vars),
+      n.css(
+        selector,
+        identifier || selector,
+        isAdaptive,
+        isAutoSave,
+        minPercentage,
+        vars,
+      ),
     )
     return new Selectors(flatten(nested))
   }
