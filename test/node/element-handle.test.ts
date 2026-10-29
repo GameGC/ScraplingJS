@@ -47,14 +47,14 @@ describe('Selector.fromPage', () => {
 })
 
 describe('Selector.fromHtml', () => {
-  it('builds a snapshot from a string', () => {
+  it('builds a snapshot from a string', async () => {
     setDomAdapter(createLinkedomAdapter())
-    const page = Selector.fromHtml(CARD_HTML, {})
+    const page = await Selector.fromHtml(CARD_HTML, {})
     expect(page.xpath('//h2').length).toBe(1)
   })
 
-  it('rejects non-string input', () => {
-    expect(() => Selector.fromHtml(42 as never)).toThrowError(/HTML string/)
+  it('rejects non-string input', async () => {
+    await expect(Selector.fromHtml(42 as never)).rejects.toThrowError(/HTML string/)
   })
 })
 

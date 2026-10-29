@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true
   },
-  "include": ["src", "test/test-server.ts"]
+  "include": ["src"]
 }

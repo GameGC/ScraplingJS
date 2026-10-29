@@ -5,19 +5,25 @@ import { extractBaseDomain, getIdentifierHash } from '../core/utils'
 
 export type AdaptiveFingerprint = ElementFingerprint
 
-export type SavePredicate = (key: string, fingerprint: ElementFingerprint) => void | Promise<void>
-export type ReadPredicate = (key: string) => ElementFingerprint | null | Promise<ElementFingerprint | null>
+/** All fingerprints stored for one page URL, keyed by selector identifier. */
+export type StorageBucket = Record<string, ElementFingerprint>
+
+export type SavePredicate = (
+  url: string,
+  key: string,
+  fingerprint: ElementFingerprint,
+) => void | Promise<void>
+export type LoadAllPredicate = (
+  url: string,
+) => StorageBucket | Promise<StorageBucket>
 export type ErrorHandler = (
   error: unknown,
-  context: { operation: 'save' | 'read' | 'hydrate' | 'close'; key?: string },
+  context: { operation: 'save' | 'load' | 'close'; key?: string },
 ) => void
 
 export type StorageSavePredicate = SavePredicate
-export type StorageReadPredicate = ReadPredicate
+export type StorageLoadAllPredicate = LoadAllPredicate
 export type StorageErrorHandler = ErrorHandler
-export type StorageHydrateSource = () => Promise<
-  Record<string, ElementFingerprint> | Iterable<[string, ElementFingerprint]>
->
 
 export function isValidFingerprint(fp: unknown): fp is ElementFingerprint {
   if (typeof fp !== 'object' || fp === null || Array.isArray(fp)) {
@@ -134,10 +140,12 @@ export function isValidFingerprint(fp: unknown): fp is ElementFingerprint {
 }
 
 export abstract class StorageSystemMixin implements StorageSystem {
-  readonly url: string | null
+  readonly url: string
+  readonly scope: string
 
-  constructor(url?: string | null) {
-    this.url = url && typeof url === 'string' ? url.toLowerCase() : null
+  constructor(url?: string) {
+    this.url = url && url.trim() ? url : ''
+    this.scope = this.url || 'default'
   }
 
   getBaseUrl(defaultValue = 'default'): string {

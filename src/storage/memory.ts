@@ -2,9 +2,9 @@ import type { ElementFingerprint } from '../types'
 import {
   StorageSystemMixin,
   isValidFingerprint,
+  type LoadAllPredicate,
+  type StorageBucket,
   type StorageErrorHandler,
-  type StorageHydrateSource,
-  type StorageReadPredicate,
   type StorageSavePredicate,
 } from './base'
 
@@ -81,18 +81,25 @@ const DEFAULT_BUCKET_CAPACITY = 1000
 const globalBuckets = new LruMap<string, LruMap<string, ElementFingerprint>>(MAX_GLOBAL_BUCKETS)
 
 export interface MemoryStorageOptions {
+  /**
+   * Name of the local in-memory cache bucket. It is not a user-storage
+   * namespace: `save`/`loadAll` receive the exact page URL directly. Omit it
+   * unless several independent local caches are needed.
+   */
   storage_file?: string
   storageFile?: string
   /**
-   * Domain used to namespace fingerprints. When omitted, all instances that
-   * use the same storage file share the `default` domain.
+   * Exact page URL used as the storage bucket and cache namespace. When it is
+   * empty, instances that use the same storage file share the `default`
+   * bucket.
    */
-  url?: string | null
+  url?: string
   capacity?: number
   maxCapacity?: number
+  /** Persists one fingerprint in the URL bucket under `key`. */
   save?: StorageSavePredicate
-  read?: StorageReadPredicate
-  hydrate?: StorageHydrateSource
+  /** Loads the URL bucket; `load()` uses this for preloading. */
+  loadAll?: LoadAllPredicate
   onError?: StorageErrorHandler
 }
 
@@ -105,31 +112,28 @@ export class MemoryStorageSystem extends StorageSystemMixin {
   readonly capacity: number
   private readonly bucket: LruMap<string, ElementFingerprint>
   private readonly userSave?: StorageSavePredicate
-  private readonly userRead?: StorageReadPredicate
-  private readonly userHydrate?: StorageHydrateSource
+  private readonly userLoadAll?: LoadAllPredicate
   private readonly onError?: StorageErrorHandler
   private readonly pendingWrites: Promise<void>[] = []
 
-  constructor(optionsOrUrl?: MemoryStorageOptions | string | null, url?: string | null) {
+  constructor(optionsOrUrl?: MemoryStorageOptions | string, url?: string) {
     let storageFile = ':default:'
-    let resolvedUrl: string | null = null
+    let resolvedUrl = ''
     let capacity = DEFAULT_BUCKET_CAPACITY
     let userSave: StorageSavePredicate | undefined
-    let userRead: StorageReadPredicate | undefined
-    let userHydrate: StorageHydrateSource | undefined
+    let userLoadAll: LoadAllPredicate | undefined
     let onError: StorageErrorHandler | undefined
 
     if (typeof optionsOrUrl === 'object' && optionsOrUrl !== null) {
-      resolvedUrl = optionsOrUrl.url ?? url ?? null
+      resolvedUrl = optionsOrUrl.url ?? url ?? ''
       storageFile = optionsOrUrl.storageFile ?? optionsOrUrl.storage_file ?? ':default:'
       capacity = optionsOrUrl.capacity ?? optionsOrUrl.maxCapacity ?? DEFAULT_BUCKET_CAPACITY
       userSave = optionsOrUrl.save
-      userRead = optionsOrUrl.read
-      userHydrate = optionsOrUrl.hydrate
+      userLoadAll = optionsOrUrl.loadAll
       onError = optionsOrUrl.onError
       super(resolvedUrl)
     } else {
-      resolvedUrl = url !== undefined ? url : (optionsOrUrl ?? null)
+      resolvedUrl = url !== undefined ? url : (optionsOrUrl ?? '')
       storageFile = typeof optionsOrUrl === 'string' && url !== undefined ? optionsOrUrl : ':default:'
       super(resolvedUrl)
     }
@@ -137,8 +141,7 @@ export class MemoryStorageSystem extends StorageSystemMixin {
     this.storageFile = storageFile
     this.capacity = capacity > 0 ? capacity : DEFAULT_BUCKET_CAPACITY
     this.userSave = userSave
-    this.userRead = userRead
-    this.userHydrate = userHydrate
+    this.userLoadAll = userLoadAll
     this.onError = onError
 
     const bucketKey =
@@ -153,12 +156,13 @@ export class MemoryStorageSystem extends StorageSystemMixin {
     this.bucket = bucket
   }
 
+  private keyName(identifier: string): string {
+    const prefix = `${this.scope}:::`
+    return identifier.startsWith(prefix) ? identifier.slice(prefix.length) : identifier
+  }
+
   private makeKey(identifier: string): string {
-    const prefix = `${this.getBaseUrl()}:::`
-    if (identifier.startsWith(prefix)) {
-      return identifier
-    }
-    return `${prefix}${identifier}`
+    return `${this.scope}:::${this.keyName(identifier)}`
   }
 
   save(
@@ -181,7 +185,7 @@ export class MemoryStorageSystem extends StorageSystemMixin {
 
     if (this.userSave) {
       try {
-        const result = this.userSave(key, data)
+        const result = this.userSave(this.scope, this.keyName(identifier), structuredClone(data))
         if (result && typeof (result as Promise<void>).then === 'function') {
           const promise = (result as Promise<void>).catch((err: unknown) => {
             const error = err instanceof Error ? err : new Error(String(err))
@@ -209,69 +213,32 @@ export class MemoryStorageSystem extends StorageSystemMixin {
   }
 
   retrieve(identifier: string): ElementFingerprint | null {
-    const key = this.makeKey(identifier)
-    const found = this.bucket.get(key)
-    if (found) {
-      return structuredClone(found)
-    }
-
-    if (this.userRead) {
-      let result: ElementFingerprint | null | Promise<ElementFingerprint | null>
-      try {
-        result = this.userRead(key)
-      } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err))
-        if (this.onError) {
-          this.onError(error, { operation: 'read', key })
-          return null
-        }
-        throw error
-      }
-
-      if (result && typeof (result as Promise<unknown>).then === 'function') {
-        if (typeof (result as Promise<unknown>).catch === 'function') {
-          (result as Promise<unknown>).catch(() => {})
-        }
-        throw new Error(
-          `Async read predicate returned a Promise for key "${key}" during synchronous retrieve(). Unhydrated async read predicate detected on synchronous retrieval. Call "await storage.hydrate()" before querying.`,
-        )
-      }
-
-      if (result) {
-        if (isValidFingerprint(result)) {
-          this.bucket.set(key, structuredClone(result))
-          return structuredClone(result)
-        }
-        const err = new Error(`Malformed fingerprint returned from read predicate for key "${key}"`)
-        if (this.onError) {
-          this.onError(err, { operation: 'read', key })
-        }
-        return null
-      }
-    }
-
-    return null
+    const found = this.bucket.get(this.makeKey(identifier))
+    return found ? structuredClone(found) : null
   }
 
-  async hydrate(
-    entries?: Record<string, ElementFingerprint> | Iterable<[string, ElementFingerprint]> | null,
+  async load(
+    input?: Record<string, ElementFingerprint> | Iterable<[string, ElementFingerprint]>,
   ): Promise<void> {
     try {
-      let source: Iterable<[string, ElementFingerprint]> | null = null
+      let source: Iterable<[string, ElementFingerprint]> | undefined
 
-      if (entries) {
-        if (Symbol.iterator in Object(entries)) {
-          source = entries as Iterable<[string, ElementFingerprint]>
+      if (input) {
+        if (Symbol.iterator in Object(input)) {
+          source = input as Iterable<[string, ElementFingerprint]>
         } else {
-          source = Object.entries(entries as Record<string, ElementFingerprint>)
+          source = Object.entries(input as Record<string, ElementFingerprint>)
         }
-      } else if (this.userHydrate) {
-        const loaded = await this.userHydrate()
-        if (loaded) {
-          if (Symbol.iterator in Object(loaded)) {
-            source = loaded as Iterable<[string, ElementFingerprint]>
+      } else if (this.userLoadAll) {
+        const loaded: unknown = await this.userLoadAll(this.scope)
+        if (loaded && typeof loaded === 'object' && !Array.isArray(loaded)) {
+          source = Object.entries(loaded as StorageBucket)
+        } else if (loaded !== undefined) {
+          const err = new Error(`loadAll("${this.scope}") must return an object of fingerprints`)
+          if (this.onError) {
+            this.onError(err, { operation: 'load' })
           } else {
-            source = Object.entries(loaded as Record<string, ElementFingerprint>)
+            throw err
           }
         }
       }
@@ -280,14 +247,15 @@ export class MemoryStorageSystem extends StorageSystemMixin {
         return
       }
 
-      for (const [key, value] of source) {
+      for (const [rawKey, value] of source) {
+        const key = this.makeKey(rawKey)
         if (this.bucket.has(key)) {
           continue
         }
         if (!isValidFingerprint(value)) {
-          const err = new Error(`Malformed fingerprint during hydration for key "${key}"`)
+          const err = new Error(`Malformed fingerprint during loading for key "${key}"`)
           if (this.onError) {
-            this.onError(err, { operation: 'hydrate', key })
+            this.onError(err, { operation: 'load', key })
           }
           continue
         }
@@ -296,7 +264,7 @@ export class MemoryStorageSystem extends StorageSystemMixin {
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err))
       if (this.onError) {
-        this.onError(error, { operation: 'hydrate' })
+        this.onError(error, { operation: 'load' })
       } else {
         throw error
       }
@@ -323,7 +291,7 @@ export class MemoryStorageSystem extends StorageSystemMixin {
   }
 
   clear(): void {
-    const prefix = `${this.getBaseUrl()}:::`
+    const prefix = `${this.scope}:::`
     for (const key of Array.from(this.bucket.keys())) {
       if (key.startsWith(prefix)) {
         this.bucket.delete(key)
@@ -340,13 +308,14 @@ export class MemoryStorageSystem extends StorageSystemMixin {
   }
 
   importSnapshot(snapshot: Record<string, ElementFingerprint>): void {
-    for (const [k, v] of Object.entries(snapshot)) {
+    for (const [rawKey, v] of Object.entries(snapshot)) {
+      const key = this.makeKey(rawKey)
       if (isValidFingerprint(v)) {
-        this.bucket.set(k, structuredClone(v))
+        this.bucket.set(key, structuredClone(v))
       } else if (this.onError) {
-        this.onError(new Error(`Malformed fingerprint in importSnapshot for key "${k}"`), {
-          operation: 'hydrate',
-          key: k,
+        this.onError(new Error(`Malformed fingerprint in importSnapshot for key "${key}"`), {
+          operation: 'load',
+          key,
         })
       }
     }

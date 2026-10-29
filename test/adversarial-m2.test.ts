@@ -375,33 +375,12 @@ describe('Adversarial Stress Test: MemoryStorageSystem & Predicates', () => {
 
     expect(captured.length).toBe(1)
     expect(captured[0].op).toBe('save')
-    expect(captured[0].key).toBe('example.com:::string-err-item')
+    expect(captured[0].key).toBe('https://nonerror.example.com:::string-err-item')
     expect(captured[0].error).toBeInstanceOf(Error)
     expect((captured[0].error as Error).message).toBe('raw string error rejection')
   })
 
-  it('handles custom read predicate throwing non-Error objects and returns null safely', () => {
-    const captured: Array<{ error: unknown; op: string; key?: string }> = []
-    const storage = new MemoryStorageSystem({
-      url: 'https://nonerror-read.example.com',
-      read: () => {
-        throw 500
-      },
-      onError: (err, ctx) => {
-        captured.push({ error: err, op: ctx.operation, key: ctx.key })
-      },
-    })
-
-    const result = storage.retrieve('fail-read-key')
-    expect(result).toBeNull()
-    expect(captured.length).toBe(1)
-    expect(captured[0].op).toBe('read')
-    expect(captured[0].key).toBe('example.com:::fail-read-key')
-    expect(captured[0].error).toBeInstanceOf(Error)
-    expect((captured[0].error as Error).message).toBe('500')
-  })
-
-  it('re-throws synchronous save and read errors when onError is omitted', () => {
+  it('re-throws synchronous save errors when onError is omitted', () => {
     const failingSaveStorage = new MemoryStorageSystem({
       storageFile: 'failing-save-bucket',
       url: 'https://no-handler.example.com',
@@ -419,18 +398,6 @@ describe('Adversarial Stress Test: MemoryStorageSystem & Predicates', () => {
     expect(() => {
       failingSaveStorage.save(fp, 'key1')
     }).toThrow('Disk write failed without handler')
-
-    const failingReadStorage = new MemoryStorageSystem({
-      storageFile: 'failing-read-bucket',
-      url: 'https://no-handler-read.example.com',
-      read: () => {
-        throw new Error('Read failed without handler')
-      },
-    })
-
-    expect(() => {
-      failingReadStorage.retrieve('uncached-key')
-    }).toThrow('Read failed without handler')
   })
 
   it('handles async save predicates that return rejected promises without unhandled rejection', async () => {
@@ -457,133 +424,8 @@ describe('Adversarial Stress Test: MemoryStorageSystem & Predicates', () => {
 
     expect(captured.length).toBe(1)
     expect(captured[0].op).toBe('save')
-    expect(captured[0].key).toBe('example.com:::async-fail-key')
+    expect(captured[0].key).toBe('https://async-reject.example.com:::async-fail-key')
     expect((captured[0].error as Error).message).toBe('Async network timeout')
-  })
-
-  it('routes malformed read predicate returns to onError and returns null', () => {
-    const captured: Array<{ error: unknown; op: string; key?: string }> = []
-    let currentReturn: unknown = 'not-a-fingerprint'
-
-    const storage = new MemoryStorageSystem({
-      url: 'https://malformed-read.example.com',
-      read: () => currentReturn as ElementFingerprint,
-      onError: (err, ctx) => {
-        captured.push({ error: err, op: ctx.operation, key: ctx.key })
-      },
-    })
-
-    const res1 = storage.retrieve('bad-1')
-    expect(res1).toBeNull()
-    expect(captured.length).toBe(1)
-    expect(captured[0].op).toBe('read')
-    expect((captured[0].error as Error).message).toContain('Malformed fingerprint returned from read predicate')
-
-    currentReturn = { tag: 123, attributes: 'invalid' }
-    const res2 = storage.retrieve('bad-2')
-    expect(res2).toBeNull()
-    expect(captured.length).toBe(2)
-
-    currentReturn = { tag: 'div', attributes: { key: 999 }, path: ['div'] }
-    const res3 = storage.retrieve('bad-3')
-    expect(res3).toBeNull()
-    expect(captured.length).toBe(3)
-  })
-
-  it('returns null cleanly without reporting to onError when read predicate returns null or undefined', () => {
-    const captured: unknown[] = []
-    let currentReturn: ElementFingerprint | null | undefined = null
-
-    const storage = new MemoryStorageSystem({
-      url: 'https://notfound.example.com',
-      read: () => currentReturn as ElementFingerprint | null,
-      onError: (err) => {
-        captured.push(err)
-      },
-    })
-
-    expect(storage.retrieve('non-existent-1')).toBeNull()
-    expect(captured.length).toBe(0)
-
-    currentReturn = undefined
-    expect(storage.retrieve('non-existent-2')).toBeNull()
-    expect(captured.length).toBe(0)
-  })
-})
-
-describe('Adversarial Stress Test: B-1/B-2 Synchronous Runtime Guard', () => {
-  beforeEach(() => {
-    MemoryStorageSystem.clearAll()
-  })
-
-  const validFp: ElementFingerprint = {
-    tag: 'input',
-    attributes: { type: 'text' },
-    path: ['input'],
-  }
-
-  it('triggers runtime guard for native Promise.resolve()', () => {
-    const storage = new MemoryStorageSystem({
-      url: 'https://guard-test.example.com',
-      read: () => Promise.resolve(validFp),
-    })
-
-    expect(() => storage.retrieve('promise-resolve')).toThrowError(
-      /Async read predicate returned a Promise for key "example\.com:::promise-resolve" during synchronous retrieve\(\)\. Unhydrated async read predicate detected on synchronous retrieval\. Call "await storage\.hydrate\(\)" before querying\./,
-    )
-  })
-
-  it('triggers runtime guard for async function return', () => {
-    const storage = new MemoryStorageSystem({
-      url: 'https://guard-test.example.com',
-      read: async () => validFp,
-    })
-
-    expect(() => storage.retrieve('async-fn')).toThrowError(
-      /Unhydrated async read predicate detected on synchronous retrieval/,
-    )
-  })
-
-  it('triggers runtime guard for custom thenable object', () => {
-    const customThenable = {
-      then(onFulfilled: (val: unknown) => void) {
-        onFulfilled(validFp)
-      },
-    }
-
-    const storage = new MemoryStorageSystem({
-      url: 'https://guard-test.example.com',
-      read: () => customThenable as unknown as ElementFingerprint,
-    })
-
-    expect(() => storage.retrieve('custom-thenable')).toThrowError(
-      /Unhydrated async read predicate detected on synchronous retrieval/,
-    )
-  })
-
-  it('triggers runtime guard when read predicate returns an immediately rejected promise', async () => {
-    let unhandled = false
-    const onUnhandled = () => {
-      unhandled = true
-    }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('unhandledrejection', onUnhandled)
-    }
-
-    const storage = new MemoryStorageSystem({
-      url: 'https://guard-test.example.com',
-      read: () => Promise.reject(new Error('Pre-rejected read')),
-    })
-
-    expect(() => storage.retrieve('pre-rejected')).toThrowError(
-      /Unhydrated async read predicate detected on synchronous retrieval/,
-    )
-
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(unhandled).toBe(false)
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('unhandledrejection', onUnhandled)
-    }
   })
 })
 
@@ -592,7 +434,7 @@ describe('Adversarial Stress Test: onError Context Payload & Safety', () => {
     MemoryStorageSystem.clearAll()
   })
 
-  it('verifies exact context parameters across save, read, and hydrate operations', async () => {
+  it('verifies exact context parameters across save and load operations', async () => {
     const contexts: Array<{ op: string; key?: string }> = []
     const errorHandler: StorageErrorHandler = (_err, ctx) => {
       contexts.push({ op: ctx.operation, key: ctx.key })
@@ -600,12 +442,8 @@ describe('Adversarial Stress Test: onError Context Payload & Safety', () => {
 
     const storage = new MemoryStorageSystem({
       url: 'https://context.example.com',
-      save: (key) => {
+      save: (_url, key) => {
         if (key.includes('bad')) throw new Error('save fail')
-      },
-      read: (key) => {
-        if (key.includes('bad')) throw new Error('read fail')
-        return null
       },
       onError: errorHandler,
     })
@@ -617,31 +455,30 @@ describe('Adversarial Stress Test: onError Context Payload & Safety', () => {
     }
 
     storage.save(fp, 'bad-save')
-    expect(contexts[0]).toEqual({ op: 'save', key: 'example.com:::bad-save' })
+    expect(contexts[0]).toEqual({
+      op: 'save',
+      key: 'https://context.example.com:::bad-save',
+    })
 
-    storage.retrieve('bad-read')
-    expect(contexts[1]).toEqual({ op: 'read', key: 'example.com:::bad-read' })
-
-    await storage.hydrate({
-      'example.com:::malformed-fp': {
+    await storage.load({
+      'https://context.example.com:::malformed-fp': {
         tag: '',
         attributes: {},
         path: [],
       } as unknown as ElementFingerprint,
     })
-    expect(contexts[2]).toEqual({ op: 'hydrate', key: 'example.com:::malformed-fp' })
+    expect(contexts[1]).toEqual({
+      op: 'load',
+      key: 'https://context.example.com:::malformed-fp',
+    })
   })
 
   it('safely handles special characters in identifiers and URLs', () => {
     const keysEncountered: string[] = []
     const storage = new MemoryStorageSystem({
       url: 'https://sub.domain.example.co.uk:8080/path/test?q=1#hash',
-      save: (key) => {
+      save: (_url, key) => {
         keysEncountered.push(key)
-      },
-      read: (key) => {
-        keysEncountered.push(key)
-        return null
       },
     })
 
@@ -653,13 +490,11 @@ describe('Adversarial Stress Test: onError Context Payload & Safety', () => {
 
     const specialIdent = 'btn:::special/weird&chars#quote"\'<tag>'
     storage.save(fp, specialIdent)
-    expect(keysEncountered[0]).toBe(`example.co.uk:::${specialIdent}`)
+    expect(keysEncountered[0]).toBe(specialIdent)
 
-    storage.retrieve('uncached-special-query')
-    expect(keysEncountered[1]).toBe('example.co.uk:::uncached-special-query')
-
-    const alreadyPrefixed = 'example.co.uk:::prefixed-key'
+    const alreadyPrefixed =
+      'https://sub.domain.example.co.uk:8080/path/test?q=1#hash:::prefixed-key'
     storage.save(fp, alreadyPrefixed)
-    expect(keysEncountered[2]).toBe(alreadyPrefixed)
+    expect(keysEncountered[1]).toBe('prefixed-key')
   })
 })

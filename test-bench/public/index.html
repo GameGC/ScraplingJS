@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScraplingJS Adaptive Element Test Bench • Indeed Layout Mutation Stand</title>
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="bench-header">
+    <div class="bench-brand">
+      <div class="bench-logo">⚡ ScraplingJS</div>
+      <div class="bench-title">
+        <h1>Adaptive Element Test Stand</h1>
+        <p>Indeed Job Search Layout &amp; Framework Mutation Benchmark</p>
+      </div>
+    </div>
+
+    <div class="bench-actions">
+      <button id="runMatrixBtn" class="btn-primary">
+        📊 Run Full Matrix Benchmark
+      </button>
+    </div>
+  </header>
+
+  <!-- Framework Navigation Tabs -->
+  <nav class="framework-nav">
+    <span class="framework-nav-label">Select Version:</span>
+    <button class="fw-tab" data-fw="react-emotion">
+      <span>⚛️ Baseline: React 19</span>
+      <span class="fw-badge">Emotion CSS</span>
+    </button>
+    <button class="fw-tab active" data-fw="nextjs-cssmodules">
+      <span>▲ Next.js 15 (RSC)</span>
+      <span class="fw-badge">CSS Modules Hashes</span>
+    </button>
+    <button class="fw-tab" data-fw="vue-tailwind">
+      <span>💚 Vue 3 / Nuxt 3</span>
+      <span class="fw-badge">Tailwind CSS + Scoped</span>
+    </button>
+    <button class="fw-tab" data-fw="svelte-scoped">
+      <span>🔥 Svelte 5 / SvelteKit</span>
+      <span class="fw-badge">Component Scoped</span>
+    </button>
+    <button class="fw-tab" data-fw="nodejs-bem">
+      <span>🟢 Node.js Express SSR</span>
+      <span class="fw-badge">BEM Architecture</span>
+    </button>
+  </nav>
+
+  <!-- Main Body -->
+  <div class="bench-body">
+    <!-- Left: Live Preview Pane -->
+    <section class="preview-pane">
+      <div class="preview-bar">
+        <span>🌐 Simulated Browser Viewport</span>
+        <span class="preview-url" id="previewUrlText">/pages/2-indeed-nextjs-cssmodules.html</span>
+      </div>
+      <iframe id="previewIframe" class="preview-iframe" src="/pages/2-indeed-nextjs-cssmodules.html"></iframe>
+    </section>
+
+    <!-- Right: Inspector & Relocation Control -->
+    <aside class="inspector-pane">
+      
+      <!-- Target Selector Card -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>🎯 Target Element</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);">Trained on Baseline</span>
+        </div>
+
+        <select id="targetSelect" class="target-select"></select>
+
+        <p id="targetDescription" class="target-description">
+          Select an element above to test adaptive relocation across framework re-renders.
+        </p>
+
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom: 0.75rem;">
+          Baseline Selector: <code id="initialSelectorCode" class="code-pill">input.css-1rtikjh</code>
+        </div>
+
+        <button id="locateBtn" class="btn-primary" style="width: 100%; justify-content: center;">
+          🎯 Run Adaptive Locator
+        </button>
+      </div>
+
+      <!-- Result Card -->
+      <div id="resultCard" class="panel-card" style="display: none;">
+        <div class="result-header">
+          <span style="font-weight: 700; font-size: 0.9rem;">Relocation Results</span>
+          <span id="scoreBadge" class="score-badge high">88.5% Match</span>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-item">
+            <span class="metric-label">Execution Time</span>
+            <span class="metric-value" id="metricDuration">1.2 ms</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Relocated Tag</span>
+            <span class="metric-value" id="metricTag">input</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">DOM Depth Delta</span>
+            <span class="metric-value" id="metricDepthDelta">0</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Relocated Snippet</span>
+            <span class="metric-value" id="metricRelocatedText" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;"></span>
+          </div>
+        </div>
+
+        <div class="comparison-box" id="compareBox"></div>
+      </div>
+
+      <!-- Educational Card on How ScraplingJS Works -->
+      <div class="panel-card">
+        <div class="panel-title">🧠 How ScraplingJS Solves Layout Churn</div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
+          When websites migrate frameworks (e.g. from React Emotion to Next.js or Vue Tailwind), CSS class names are rehashed, tag hierarchies shift, and traditional scrapers break completely.
+        </p>
+        <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 1.2rem; line-height: 1.5;">
+          <li><strong>Structural Fingerprinting:</strong> Extracts semantic attributes, text sequence, tag hierarchy, and neighbor sibling relations.</li>
+          <li><strong>SequenceMatcher &amp; Scoring Matrix:</strong> Evaluates candidate nodes with multi-factor similarity matching.</li>
+          <li><strong>Zero-maintenance Persistence:</strong> Automatically remembers newly relocated selectors so subsequent queries execute at direct native speed.</li>
+        </ul>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- Full Matrix Benchmark Modal -->
+  <div id="matrixModal" class="modal-overlay">
+    <div class="modal-content">
+      <div id="matrixContainer"></div>
+      <div style="text-align: right; margin-top: 1.5rem;">
+        <button id="closeModalBtn" class="btn-secondary">Close Benchmark</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

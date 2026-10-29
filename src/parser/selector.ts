@@ -32,7 +32,12 @@ import {
   collectQueryContextRoots,
   getDeepParentElement,
 } from '../core/shadow-dom'
-import { AutoStorageSystem, MemoryStorageSystem, StorageSystemMixin } from '../storage'
+import {
+  AutoStorageSystem,
+  getStorageConfiguration,
+  MemoryStorageSystem,
+  StorageSystemMixin,
+} from '../storage'
 import {
   collectAllText,
   getAncestorElements,
@@ -75,6 +80,14 @@ export function isDomRootNode(
   if (!value || typeof value !== 'object') return false
   const nodeType = (value as Node).nodeType
   return nodeType === 1 || nodeType === 9 || nodeType === 11
+}
+
+type SelectorFactoryOptions = Omit<SelectorOptions, 'content' | 'root'>
+
+function normalizeFactoryOptions(
+  options?: SelectorFactoryOptions | string,
+): SelectorFactoryOptions | undefined {
+  return typeof options === 'string' ? { url: options } : options
 }
 
 export class Selector {
@@ -153,87 +166,102 @@ export class Selector {
 
     if (opts._storage) {
       this._storage = opts._storage
-    } else if (opts.storage !== undefined) {
-      const storageArg = opts.storage
-      const storageArgs = opts.storageArgs ??
-        opts.storage_args ?? {
-          storage_file: ':default:',
-          url: this.url,
-        }
-      if (
-        typeof storageArg === 'object' &&
-        storageArg !== null &&
-        'save' in storageArg &&
-        typeof (storageArg as StorageSystem).save === 'function' &&
-        'retrieve' in storageArg &&
-        typeof (storageArg as StorageSystem).retrieve === 'function'
-      ) {
-        this._storage = storageArg as StorageSystem
-      } else if (
-        typeof storageArg === 'function' &&
-        (storageArg === MemoryStorageSystem ||
-          storageArg === AutoStorageSystem ||
-          storageArg.prototype instanceof StorageSystemMixin ||
-          (typeof storageArg.prototype?.save === 'function' &&
-            typeof storageArg.prototype?.retrieve === 'function'))
-      ) {
-        const StorageCtor = storageArg as new (options?: unknown) => StorageSystem
-        this._storage = new StorageCtor(storageArgs)
-      } else {
-        throw new Error(
-          'Storage system must be inherited from class `StorageSystemMixin` or implement save/retrieve',
-        )
-      }
     } else {
-      const storageArgs = opts.storageArgs ??
-        opts.storage_args ?? {
-          storage_file: ':default:',
-          url: this.url,
+      const configured = opts.storage === undefined ? getStorageConfiguration() : null
+      const storageArg = opts.storage ?? configured?.storage
+      const storageArgs = {
+        ...(configured?.storageArgs ?? {}),
+        ...(opts.storageArgs ?? opts.storage_args ?? {}),
+        url: this.url,
+      }
+
+      if (storageArg !== undefined) {
+        if (
+          typeof storageArg === 'object' &&
+          storageArg !== null &&
+          'save' in storageArg &&
+          typeof (storageArg as StorageSystem).save === 'function' &&
+          'retrieve' in storageArg &&
+          typeof (storageArg as StorageSystem).retrieve === 'function'
+        ) {
+          this._storage = storageArg as StorageSystem
+        } else if (
+          typeof storageArg === 'function' &&
+          (storageArg === MemoryStorageSystem ||
+            storageArg === AutoStorageSystem ||
+            storageArg.prototype instanceof StorageSystemMixin ||
+            (typeof storageArg.prototype?.save === 'function' &&
+              typeof storageArg.prototype?.retrieve === 'function'))
+        ) {
+          const StorageCtor = storageArg as new (options?: unknown) => StorageSystem
+          this._storage = new StorageCtor(storageArgs)
+        } else {
+          throw new Error(
+            'Storage system must be inherited from class `StorageSystemMixin` or implement save/retrieve',
+          )
         }
-      this._storage = new AutoStorageSystem(storageArgs)
+      } else {
+        this._storage = new AutoStorageSystem(storageArgs)
+      }
     }
 
     return this.createProxy()
   }
 
-  static fromDocument(
+  /**
+   * Awaitable factory for an already parsed document. It uses the live DOM,
+   * including open shadow roots, and loads the configured storage before
+   * resolving. Pass a URL string or a full options object as the second
+   * argument; storage is configured once with `configureStorage()`.
+   */
+  static async fromDocument(
     doc: Document = document,
-    options?: Omit<SelectorOptions, 'content' | 'root'>,
-  ): Selector {
-    return new Selector({
+    options?: SelectorFactoryOptions | string,
+  ): Promise<Selector> {
+    const opts = normalizeFactoryOptions(options)
+    const page = new Selector({
       pierceShadow: true,
-      ...options,
-      url: options?.url ?? doc.location?.href ?? '',
+      ...opts,
+      url: opts?.url ?? doc.location?.href ?? '',
       root: doc.documentElement,
     })
+    await page.load()
+    return page
   }
 
-  static fromElement(
+  static async fromElement(
     element: Element,
-    options?: Omit<SelectorOptions, 'content' | 'root'>,
-  ): Selector {
-    return new Selector({
+    options?: SelectorFactoryOptions | string,
+  ): Promise<Selector> {
+    const opts = normalizeFactoryOptions(options)
+    const page = new Selector({
       pierceShadow: true,
-      ...options,
-      url: options?.url ?? element.ownerDocument?.location?.href ?? '',
+      ...opts,
+      url: opts?.url ?? element.ownerDocument?.location?.href ?? '',
       root: element,
     })
+    await page.load()
+    return page
   }
 
-  static fromHtml(
+  static async fromHtml(
     html: string,
-    options?: Omit<SelectorOptions, 'content' | 'root'>,
-  ): Selector {
+    options?: SelectorFactoryOptions | string,
+  ): Promise<Selector> {
     if (typeof html !== 'string') {
       throw new TypeError('Selector.fromHtml() expects an HTML string')
     }
-    return new Selector({ ...options, content: html })
+    const opts = normalizeFactoryOptions(options)
+    const page = new Selector({ ...opts, content: html })
+    await page.load()
+    return page
   }
 
   static async fromPage(
     page: PageContentProvider,
-    options?: Omit<SelectorOptions, 'content' | 'root'>,
+    options?: SelectorFactoryOptions | string,
   ): Promise<Selector> {
+    const opts = normalizeFactoryOptions(options)
     if (!page || typeof page.content !== 'function') {
       throw new TypeError(
         'Selector.fromPage() expects a Puppeteer or Playwright Page: an object with a content() method (and usually url()).',
@@ -247,20 +275,35 @@ export class Selector {
         pageUrl = page.url()
       } catch {}
     }
-    return new Selector({
-      ...options,
+    const snapshot = new Selector({
+      ...opts,
       content: await page.content(),
-      url: options?.url ?? pageUrl,
+      url: opts?.url ?? pageUrl,
     })
+    await snapshot.load()
+    return snapshot
   }
 
   static async fromHandle(
     handle: unknown,
-    options?: Omit<SelectorOptions, 'content' | 'root'>,
+    options?: SelectorFactoryOptions | string,
   ): Promise<Selector> {
+    const opts = normalizeFactoryOptions(options)
     const elementHandle = resolveElementHandle(handle)
     const html = await readHandleOuterHtml(elementHandle)
-    return new Selector({ ...options, content: html })
+    const snapshot = new Selector({ ...opts, content: html })
+    await snapshot.load()
+    return snapshot
+  }
+
+  /**
+   * Loads all adaptive fingerprints for this selector's URL from storage.
+   * Factories call it automatically; use it directly only with `new Selector`.
+   */
+  async load(): Promise<void> {
+    if (this._storage && typeof this._storage.load === 'function') {
+      await this._storage.load()
+    }
   }
 
   private createProxy(): this {
@@ -1045,7 +1088,7 @@ export class Selector {
         (res as Promise<unknown>).catch(() => {})
       }
       throw new Error(
-        `Storage returned an unhydrated Promise for identifier "${identifier}" during synchronous retrieval. Call "await storage.hydrate()" or use synchronous storage before querying.`,
+        `Storage returned an unresolved Promise for identifier "${identifier}" during synchronous retrieval. Call "await storage.load()" or use synchronous storage before querying.`,
       )
     }
     return res as ElementFingerprint | null

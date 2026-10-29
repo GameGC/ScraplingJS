@@ -83,7 +83,24 @@ describe('MemoryStorageSystem isolation', () => {
     expect(wide.retrieve('wide')).not.toBeNull()
   })
 
-  it('clears only the current domain from a shared bucket', () => {
+  it('does not share cache between two full page URLs on the same host', () => {
+    const first = new MemoryStorageSystem({
+      storageFile: 'full-url-isolation',
+      url: 'https://shop.example.com/product/x',
+    })
+    const second = new MemoryStorageSystem({
+      storageFile: 'full-url-isolation',
+      url: 'https://shop.example.com/product/y',
+    })
+
+    first.save(fingerprint('first'), 'shared-key')
+    second.save(fingerprint('second'), 'shared-key')
+
+    expect(first.retrieve('shared-key')?.text).toBe('first')
+    expect(second.retrieve('shared-key')?.text).toBe('second')
+  })
+
+  it('clears only the current page URL from a shared bucket', () => {
     const first = new MemoryStorageSystem({
       storageFile: 'scoped-clear',
       url: 'https://first.example.com',

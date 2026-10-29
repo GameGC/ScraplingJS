@@ -26,11 +26,11 @@ export interface ElementFingerprint {
 }
 
 export interface StorageSystem {
-  readonly url?: string | null
+  readonly url?: string
   save(element: Element | ElementFingerprint, identifier: string): void | Promise<void>
   retrieve(identifier: string): ElementFingerprint | null | Promise<ElementFingerprint | null>
   close?(): void | Promise<void>
-  hydrate?(): void | Promise<void>
+  load?(): Promise<void>
   flush?(): void | Promise<void>
 }
 

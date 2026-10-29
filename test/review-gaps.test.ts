@@ -100,8 +100,8 @@ describe('12 Review Test-Gaps Suite', () => {
     })
   })
 
-  describe('Gap 3: Hydrate merge race condition', () => {
-    it('preserves newer in-memory entries when an older or conflicting snapshot is hydrated', async () => {
+  describe('Gap 3: Load merge race condition', () => {
+    it('preserves newer in-memory entries when an older or conflicting snapshot is loaded', async () => {
       const storage = new MemoryStorageSystem({
         url: 'https://race.example.com',
       })
@@ -115,13 +115,13 @@ describe('12 Review Test-Gaps Suite', () => {
       storage.save(inMemoryFp, 'race-button')
 
       const staleSnapshot: Record<string, ElementFingerprint> = {
-        'example.com:::race-button': {
+        'https://race.example.com:::race-button': {
           tag: 'button',
           attributes: { id: 'race-btn', class: 'btn primary v1' },
           text: 'Version 1 (Stale)',
           path: ['button'],
         },
-        'example.com:::new-entry': {
+        'https://race.example.com:::new-entry': {
           tag: 'span',
           attributes: { id: 'status' },
           text: 'Active Status',
@@ -129,7 +129,7 @@ describe('12 Review Test-Gaps Suite', () => {
         },
       }
 
-      await storage.hydrate(staleSnapshot)
+      await storage.load(staleSnapshot)
 
       const activeRetrieved = storage.retrieve('race-button')
       expect(activeRetrieved).not.toBeNull()

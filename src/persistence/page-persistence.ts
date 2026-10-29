@@ -40,9 +40,8 @@ export type {
 export { parseQueryArguments } from './query-parser'
 import {
   MemoryStorageSystem,
+  type LoadAllPredicate,
   type StorageErrorHandler,
-  type StorageHydrateSource,
-  type StorageReadPredicate,
   type StorageSavePredicate,
 } from '../storage'
 
@@ -56,8 +55,7 @@ export interface PagePersistenceManagerOptions {
   percentage?: number
   onRelocate?: RelocationCallback
   save?: StorageSavePredicate
-  read?: StorageReadPredicate
-  hydrate?: StorageHydrateSource
+  loadAll?: LoadAllPredicate
   onError?: StorageErrorHandler
   storageCapacity?: number
   ignoreAttributes?: readonly string[]
@@ -102,8 +100,7 @@ export class PagePersistenceManager {
       new MemoryStorageSystem({
         url: this.url,
         save: options?.save,
-        read: options?.read,
-        hydrate: options?.hydrate,
+        loadAll: options?.loadAll,
         onError: options?.onError,
         capacity: options?.storageCapacity,
       })
@@ -163,8 +160,8 @@ export class PagePersistenceManager {
   }
 
   async init(): Promise<void> {
-    if (typeof this.storage.hydrate === 'function') {
-      await this.storage.hydrate()
+    if (typeof this.storage.load === 'function') {
+      await this.storage.load()
     }
   }
 

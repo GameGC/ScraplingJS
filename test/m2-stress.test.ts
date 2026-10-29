@@ -251,14 +251,13 @@ describe('Milestone M2 Empirical Challenge Suite', () => {
       const storage = new MemoryStorageSystem({
         url: 'https://concurrency.test.com',
         storageFile: 'concurrency-test.json',
-        save: async (key, fp) => {
+        save: async (_url, key, fp) => {
           await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 15) + 1))
           persistedDb.set(key, fp)
         },
-        read: (key) => persistedDb.get(key) ?? null,
-        hydrate: async () => {
+        loadAll: async () => {
           await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 20) + 1))
-          return persistedDb
+          return Object.fromEntries(persistedDb)
         },
         onError: customOnError,
       })
@@ -295,10 +294,10 @@ describe('Milestone M2 Empirical Challenge Suite', () => {
         promises.push(
           (async () => {
             const snapshotBatch: Record<string, ElementFingerprint> = {
-              'test.com:::critical-item': createSampleFingerprint('stale-btn', 'STALE OVERWRITE ATTEMPT'),
-              [`test.com:::hydrated-batch-${i}`]: createSampleFingerprint(`batch-btn-${i}`, `Hydrated Batch ${i}`),
+              'critical-item': createSampleFingerprint('stale-btn', 'STALE OVERWRITE ATTEMPT'),
+              [`loaded-batch-${i}`]: createSampleFingerprint(`batch-btn-${i}`, `Loaded Batch ${i}`),
             }
-            await storage.hydrate(snapshotBatch)
+            await storage.load(snapshotBatch)
           })(),
         )
       }
@@ -324,53 +323,53 @@ describe('Milestone M2 Empirical Challenge Suite', () => {
       expect(preservedResult?.attributes.id).toBe('initial-btn')
 
       for (let i = 0; i < 100; i++) {
-        const batchKey = `hydrated-batch-${i}`
+        const batchKey = `loaded-batch-${i}`
         const res = storage.retrieve(batchKey)
         expect(res).not.toBeNull()
-        expect(res?.text).toBe(`Hydrated Batch ${i}`)
+        expect(res?.text).toBe(`Loaded Batch ${i}`)
       }
     })
 
-    it('preserves merge-only integrity when hydration completes after in-flight user saves', async () => {
-      let resolveHydrate: (val: Record<string, ElementFingerprint>) => void = () => {}
-      const hydratePromise = new Promise<Record<string, ElementFingerprint>>((resolve) => {
-        resolveHydrate = resolve
+    it('preserves merge-only integrity when loading completes after in-flight user saves', async () => {
+      let resolveLoad: (val: Record<string, ElementFingerprint>) => void = () => {}
+      const loadPromise = new Promise<Record<string, ElementFingerprint>>((resolve) => {
+        resolveLoad = resolve
       })
 
       const storage = new MemoryStorageSystem({
         url: 'https://race.example.com',
-        hydrate: () => hydratePromise,
+        loadAll: () => loadPromise,
       })
 
-      const hydrationExecution = storage.hydrate()
+      const loadingExecution = storage.load()
 
       const freshFp = createSampleFingerprint('fresh-btn', 'Freshly Saved Item')
       storage.save(freshFp, 'target-key')
 
       expect(storage.retrieve('target-key')?.text).toBe('Freshly Saved Item')
 
-      resolveHydrate({
-        'example.com:::target-key': createSampleFingerprint('stale-btn', 'Stale Hydrated Item'),
-        'example.com:::other-key': createSampleFingerprint('other-btn', 'Other Hydrated Item'),
+      resolveLoad({
+        'target-key': createSampleFingerprint('stale-btn', 'Stale Loaded Item'),
+        'other-key': createSampleFingerprint('other-btn', 'Other Loaded Item'),
       })
 
-      await hydrationExecution
+      await loadingExecution
 
-      const postHydrateTarget = storage.retrieve('target-key')
-      expect(postHydrateTarget).not.toBeNull()
-      expect(postHydrateTarget?.text).toBe('Freshly Saved Item')
-      expect(postHydrateTarget?.attributes.id).toBe('fresh-btn')
+      const postLoadTarget = storage.retrieve('target-key')
+      expect(postLoadTarget).not.toBeNull()
+      expect(postLoadTarget?.text).toBe('Freshly Saved Item')
+      expect(postLoadTarget?.attributes.id).toBe('fresh-btn')
 
       const otherTarget = storage.retrieve('other-key')
       expect(otherTarget).not.toBeNull()
-      expect(otherTarget?.text).toBe('Other Hydrated Item')
+      expect(otherTarget?.text).toBe('Other Loaded Item')
     })
 
     it('safely handles concurrent async write rejections without crashing flush or corrupting successful writes', async () => {
       const errorLog: string[] = []
       const storage = new MemoryStorageSystem({
         url: 'https://error-stress.test',
-        save: async (key, _fp) => {
+        save: async (_url, key, _fp) => {
           await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 10) + 1))
           if (key.includes('error-target')) {
             throw new Error(`Write failed on ${key}`)
@@ -403,7 +402,7 @@ describe('Milestone M2 Empirical Challenge Suite', () => {
       }
     })
 
-    it('enforces deep structured clone isolation on save, retrieve, and hydrate', async () => {
+    it('enforces deep structured clone isolation on save, retrieve, and load', async () => {
       const storage = new MemoryStorageSystem({ url: 'https://clone.example.com' })
       const originalFp = createSampleFingerprint('mut-btn', 'Original')
 
@@ -421,14 +420,14 @@ describe('Milestone M2 Empirical Challenge Suite', () => {
       const retrieved2 = storage.retrieve('clone-test')
       expect(retrieved2?.attributes.id).toBe('mut-btn')
 
-      const hydrateSource: Record<string, ElementFingerprint> = {
-        'example.com:::hydrate-clone': createSampleFingerprint('hyd-btn', 'Hydrated Original'),
+      const loadSource: Record<string, ElementFingerprint> = {
+        'load-clone': createSampleFingerprint('hyd-btn', 'Loaded Original'),
       }
-      await storage.hydrate(hydrateSource)
-      hydrateSource['example.com:::hydrate-clone'].attributes.id = 'MUTATED_AFTER_HYDRATE'
+      await storage.load(loadSource)
+      loadSource['load-clone'].attributes.id = 'MUTATED_AFTER_LOAD'
 
-      const retrievedHydrated = storage.retrieve('hydrate-clone')
-      expect(retrievedHydrated?.attributes.id).toBe('hyd-btn')
+      const retrievedLoaded = storage.retrieve('load-clone')
+      expect(retrievedLoaded?.attributes.id).toBe('hyd-btn')
     })
   })
 })
