@@ -687,7 +687,11 @@ export class Selector {
       this._pierceShadow,
     )
 
-    if (!this._adaptiveEnabled || !interpolatedSelector.includes(',')) {
+    const branches = interpolatedSelector.includes(',')
+      ? splitCssSelectors(interpolatedSelector)
+      : [interpolatedSelector]
+
+    if (branches.length <= 1) {
       return this.runCssQuery(
         interpolatedSelector,
         settings,
@@ -695,8 +699,6 @@ export class Selector {
         contextRoots,
       )
     }
-
-    const branches = splitCssSelectors(interpolatedSelector)
     const combinedResults = new Selectors()
     let sawDirectMatch = false
 
@@ -735,6 +737,15 @@ export class Selector {
         if (node) seen.add(node)
         deduped.push(item)
       }
+      if (deduped.length > 1) {
+        deduped.sort((a, b) => {
+          const nodeA = a.rawNode
+          const nodeB = b.rawNode
+          if (!nodeA || !nodeB || nodeA === nodeB) return 0
+          const pos = nodeA.compareDocumentPosition(nodeB)
+          return pos & 4 ? -1 : pos & 2 ? 1 : 0
+        })
+      }
       return deduped
     }
 
@@ -761,7 +772,11 @@ export class Selector {
     const nativeMatches = tryNativeCssQuery(rootElement, executableSelector, contextRoots)
     if (nativeMatches) {
       const filtered = typePosition
-        ? filterByTypePosition(nativeMatches, typePosition.filters)
+        ? filterByTypePosition(
+            nativeMatches,
+            typePosition.filters,
+            typePosition.nativeVerifySelector,
+          )
         : nativeMatches
       return this.finalizeQuery(filtered, settings, cssSelector)
     }
@@ -775,7 +790,11 @@ export class Selector {
       contextRoots,
     )
     const filtered = typePosition
-      ? filterByTypePosition(matchedWrappers, typePosition.filters)
+      ? filterByTypePosition(
+          matchedWrappers,
+          typePosition.filters,
+          typePosition.nativeVerifySelector,
+        )
       : matchedWrappers
     return this.finalizeQuery(filtered, settings, cssSelector)
   }

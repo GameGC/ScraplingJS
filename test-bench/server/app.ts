@@ -289,6 +289,7 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
             let confidenceScore = 0
             let relocatedTag = ''
             let relocatedText = ''
+            let matchedExpected = false
 
             const baseFp = fingerprints.get(target.id)
             if (adaptiveFound && baseFp) {
@@ -296,6 +297,18 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
               confidenceScore = calculateSimilarityScore(baseFp, rawEl)
               relocatedTag = rawEl.tagName.toLowerCase()
               relocatedText = (rawEl.textContent || rawEl.getAttribute('placeholder') || '').trim()
+              if (target.expectedTextSnippet) {
+                matchedExpected = relocatedText
+                  .toLowerCase()
+                  .includes(target.expectedTextSnippet.toLowerCase())
+              } else if (target.expectedAttr) {
+                const val = rawEl.getAttribute(target.expectedAttr.name) || ''
+                matchedExpected = val
+                  .toLowerCase()
+                  .includes(target.expectedAttr.valueSnippet.toLowerCase())
+              } else {
+                matchedExpected = true
+              }
             }
 
             results.push({
@@ -303,7 +316,8 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
               targetName: target.name,
               initialSelector: target.initialSelector,
               traditionalFound: tradResult.length > 0,
-              adaptiveFound,
+              adaptiveFound: adaptiveFound && matchedExpected,
+              matchedExpected,
               confidenceScore,
               relocatedTag,
               relocatedText: relocatedText.slice(0, 60),

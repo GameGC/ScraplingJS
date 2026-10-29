@@ -4,6 +4,7 @@ const HIDING_DECLARATIONS = new Set([
   'display:none',
   'visibility:hidden',
   'visibility:collapse',
+  'content-visibility:hidden',
 ])
 const ZERO_HIDING_PROPERTIES = new Set([
   'opacity',
@@ -153,14 +154,30 @@ function nodeToMarkdown(node: Node): string {
           cells.push(
             nodeToMarkdown(child)
               .trim()
-              .replace(/\s*\n\s*/g, ' '),
+              .replace(/\s*\n\s*/g, ' ')
+              .replace(/\|/g, '\\|'),
           )
         }
       }
       return `\n| ${cells.join(' | ')} |`
     }
-    case 'table':
-      return `\n${childrenMd.replace(/^\n+/, '').trim()}\n`
+    case 'table': {
+      const rows = childrenMd
+        .replace(/^\n+/, '')
+        .trim()
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+      if (rows.length > 0 && !rows.some((r) => /^\|\s*---/.test(r))) {
+        const firstRowCells = rows[0]
+          .replace(/^\|\s*/, '')
+          .replace(/\s*\|$/, '')
+          .split(/(?<!\\)\|/)
+        const colCount = Math.max(firstRowCells.length, 1)
+        const separator = `| ${Array(colCount).fill('---').join(' | ')} |`
+        rows.splice(1, 0, separator)
+      }
+      return `\n${rows.join('\n')}\n`
+    }
     case 'thead':
     case 'tbody':
     case 'tfoot':

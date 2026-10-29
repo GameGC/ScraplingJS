@@ -486,7 +486,12 @@ export class PagePersistenceManager {
   }
 
   watchElement(options: PagePersistenceWatcherOptions): () => void {
-    const mode = detectQueryMode(options.selector, options.mode, this.doc)
+    const mode = detectQueryMode(
+      options.selector,
+      options.mode,
+      this.doc,
+      options.variables,
+    )
     const identifier = options.identifier ?? options.selector
     const percentage = options.percentage ?? this.defaultPercentage
     const autoUpdate = options.autoUpdateFingerprint ?? true

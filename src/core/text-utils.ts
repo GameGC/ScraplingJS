@@ -34,7 +34,15 @@ function isValidCodePoint(code: number): boolean {
 }
 
 const decodedEntityCache = new Map<string, string>()
+// Bounded: hostile pages can carry unbounded numbers of unique entity-like
+// tokens, and every decoded hit used to live in this Map forever.
+const DECODED_ENTITY_CACHE_LIMIT = 1024
 let entityDecoder: HTMLTextAreaElement | null = null
+
+/** Test-only: exposes the internal entity cache size for assertions. */
+export function __decodedEntityCacheSizeForTests(): number {
+  return decodedEntityCache.size
+}
 
 export function replaceEntities(input: string): string {
   if (!input || !input.includes('&')) {
@@ -63,6 +71,12 @@ export function replaceEntities(input: string): string {
       }
       entityDecoder.innerHTML = full
       const value = entityDecoder.value
+      if (decodedEntityCache.size >= DECODED_ENTITY_CACHE_LIMIT) {
+        const oldestKey = decodedEntityCache.keys().next().value
+        if (oldestKey !== undefined) {
+          decodedEntityCache.delete(oldestKey)
+        }
+      }
       decodedEntityCache.set(full, value)
       return value
     }

@@ -71,6 +71,10 @@ describe('scopeXPathToContext', () => {
   it('keeps absolute and already-relative expressions untouched', () => {
     expect(scopeXPathToContext('/html/body/p')).toBe('/html/body/p')
     expect(scopeXPathToContext('.//p')).toBe('.//p')
-    expect(scopeXPathToContext('(//li)[1]')).toBe('(//li)[1]')
+    // Parenthesized unions stay document-absolute no more — `(//li)[1]` used
+    // to resolve against the document root, missed the subtree and silently
+    // returned nothing, so the // after the parens is scoped as well (P1-3).
+    expect(scopeXPathToContext('(//li)[1]')).toBe('(.//li)[1]')
+    expect(scopeXPathToContext('((//li))[1]')).toBe('((.//li))[1]')
   })
 })

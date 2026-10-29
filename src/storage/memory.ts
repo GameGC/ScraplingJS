@@ -137,16 +137,16 @@ export class MemoryStorageSystem extends StorageSystemMixin {
     this.userHydrate = userHydrate
     this.onError = onError
 
-    const shared = globalBuckets.get(this.storageFile)
-    if (shared && shared.capacity === this.capacity) {
-      this.bucket = shared
-    } else {
-      const bucket = new LruMap<string, ElementFingerprint>(this.capacity)
-      if (!shared) {
-        globalBuckets.set(this.storageFile, bucket)
-      }
-      this.bucket = bucket
+    const bucketKey =
+      this.capacity === 1000
+        ? this.storageFile
+        : `${this.storageFile}::capacity:${this.capacity}`
+    let bucket = globalBuckets.get(bucketKey)
+    if (!bucket || bucket.capacity !== this.capacity) {
+      bucket = new LruMap<string, ElementFingerprint>(this.capacity)
+      globalBuckets.set(bucketKey, bucket)
     }
+    this.bucket = bucket
   }
 
   private makeKey(identifier: string): string {

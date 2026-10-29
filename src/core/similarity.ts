@@ -117,17 +117,22 @@ export interface PreparedFingerprint {
   hasActive: boolean
 }
 
-const preparedOriginalCache = new WeakMap<ElementFingerprint, PreparedFingerprint>()
+const preparedOriginalCache = new WeakMap<
+  ElementFingerprint,
+  Map<string, PreparedFingerprint>
+>()
 
 export function prepareFingerprint(
   original: ElementFingerprint,
   ignoreAttributes: readonly string[] = [],
 ): PreparedFingerprint {
+  const cacheKey =
+    ignoreAttributes.length > 0 ? ignoreAttributes.slice().sort().join('\0') : ''
+  let perObjectCache = preparedOriginalCache.get(original)
+  const cached = perObjectCache?.get(cacheKey)
+  if (cached) return cached
+
   const ignored = ignoreAttributes.length > 0 ? new Set(ignoreAttributes) : null
-  if (!ignored) {
-    const cached = preparedOriginalCache.get(original)
-    if (cached) return cached
-  }
   const text = (original.text ?? original.all_text ?? '').trim()
   const words = text ? extractTokensFromText(text) : []
   const prepared: PreparedFingerprint = {
@@ -137,9 +142,11 @@ export function prepareFingerprint(
     cleanWords: words.join(' '),
     hasActive: hasActiveState(original),
   }
-  if (!ignored) {
-    preparedOriginalCache.set(original, prepared)
+  if (!perObjectCache) {
+    perObjectCache = new Map<string, PreparedFingerprint>()
+    preparedOriginalCache.set(original, perObjectCache)
   }
+  perObjectCache.set(cacheKey, prepared)
   return prepared
 }
 

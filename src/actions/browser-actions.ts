@@ -520,15 +520,35 @@ export async function runBrowserActions(
           if (!targetEl) {
             throw new Error(`Target '${action.target}' not found`)
           }
-          if (!isInputElement(targetEl) && !isTextAreaElement(targetEl)) {
+          if (isInputElement(targetEl) || isTextAreaElement(targetEl)) {
+            targetEl.focus?.()
+            const nextValue =
+              (action.clear ?? true) ? action.value : (targetEl.value ?? '') + action.value
+            setNativeInputValue(targetEl, nextValue)
+            break
+          }
+          const htmlEl = targetEl as HTMLElement
+          const editable =
+            Boolean(htmlEl.isContentEditable) ||
+            (targetEl.hasAttribute('contenteditable') &&
+              targetEl.getAttribute('contenteditable')?.toLowerCase() !== 'false')
+          if (!editable) {
             throw new TypeError(
-              `Target '${action.target}' is not an HTMLInputElement or HTMLTextAreaElement`,
+              `Target '${action.target}' is not an HTMLInputElement, HTMLTextAreaElement, or contenteditable element`,
             )
           }
-          targetEl.focus?.()
-          const nextValue =
-            (action.clear ?? true) ? action.value : (targetEl.value ?? '') + action.value
-          setNativeInputValue(targetEl, nextValue)
+          htmlEl.focus?.()
+          const nextText =
+            (action.clear ?? true)
+              ? action.value
+              : (targetEl.textContent ?? '') + action.value
+          targetEl.textContent = nextText
+          const EventCtor =
+            doc.defaultView?.Event ?? (typeof Event !== 'undefined' ? Event : undefined)
+          if (EventCtor) {
+            targetEl.dispatchEvent(new EventCtor('input', { bubbles: true }))
+            targetEl.dispatchEvent(new EventCtor('change', { bubbles: true }))
+          }
           break
         }
         case 'checkbox':

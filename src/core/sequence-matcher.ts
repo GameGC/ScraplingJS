@@ -49,7 +49,7 @@ export class SequenceMatcher<T = string> {
     }
     this.bJunk = bJunk
 
-    if (b.length >= AUTOJUNK_MIN_LENGTH) {
+    if (typeof b !== 'string' && b.length >= AUTOJUNK_MIN_LENGTH) {
       const popularityThreshold = Math.floor(b.length / 100) + 1
       const popular: T[] = []
       for (const [elt, indices] of this.b2j) {

@@ -149,25 +149,72 @@ export function findSimilarElements(
     }
   }
 
-  const xpathPath = `//${pathParts.join('/')}[count(ancestor::*) = ${currentDepth}]`
-  const snapshot = adapter.evaluateXPath(xpathPath, rootEl)
   const similarElements: Element[] = []
+  const seen = new Set<Element>()
+  const rootNode = typeof rootEl.getRootNode === 'function' ? rootEl.getRootNode() : null
+  const inShadow = Boolean(rootNode && (rootNode as ShadowRoot).host)
 
-  for (let i = 0; i < snapshot.snapshotLength; i++) {
-    const candidate = snapshot.snapshotItem(i) as Element | null
-    if (
-      candidate &&
-      candidate !== rootEl &&
-      areElementsAlike(
-        rootEl,
-        targetAttrs,
-        candidate,
-        ignoredAttrs,
-        threshold,
-        shouldMatchText,
-      )
-    ) {
-      similarElements.push(candidate)
+  if (!inShadow) {
+    const xpathPath = `//${pathParts.join('/')}[count(ancestor::*) = ${currentDepth}]`
+    const snapshot = adapter.evaluateXPath(xpathPath, rootEl)
+    for (let i = 0; i < snapshot.snapshotLength; i++) {
+      const candidate = snapshot.snapshotItem(i) as Element | null
+      if (
+        candidate &&
+        candidate !== rootEl &&
+        areElementsAlike(
+          rootEl,
+          targetAttrs,
+          candidate,
+          ignoredAttrs,
+          threshold,
+          shouldMatchText,
+        )
+      ) {
+        seen.add(candidate)
+        similarElements.push(candidate)
+      }
+    }
+  }
+
+  if (inShadow || similarElements.length === 0) {
+    let topAncestor: Element = rootEl
+    let currParent = getDeepParentElement(topAncestor)
+    while (currParent) {
+      topAncestor = currParent
+      currParent = getDeepParentElement(topAncestor)
+    }
+    const searchRoot = topAncestor
+    const allCandidates = collectDeepElements(searchRoot, true, true)
+    const targetTag = pathParts[pathParts.length - 1]
+    const expectedParentTag = pathParts.length >= 2 ? pathParts[pathParts.length - 2] : null
+    const expectedGrandTag = pathParts.length >= 3 ? pathParts[pathParts.length - 3] : null
+
+    for (const candidate of allCandidates) {
+      if (candidate === rootEl || seen.has(candidate)) continue
+      if (candidate.tagName.toLowerCase() !== targetTag) continue
+      if (countAncestors(candidate) !== currentDepth) continue
+      const candParent = getDeepParentElement(candidate)
+      if (expectedParentTag && candParent?.tagName.toLowerCase() !== expectedParentTag) {
+        continue
+      }
+      if (expectedGrandTag) {
+        const candGrand = candParent ? getDeepParentElement(candParent) : null
+        if (candGrand?.tagName.toLowerCase() !== expectedGrandTag) continue
+      }
+      if (
+        areElementsAlike(
+          rootEl,
+          targetAttrs,
+          candidate,
+          ignoredAttrs,
+          threshold,
+          shouldMatchText,
+        )
+      ) {
+        seen.add(candidate)
+        similarElements.push(candidate)
+      }
     }
   }
 

@@ -170,13 +170,21 @@ export function interpolateCssSelector(
     `(['\"])\\$(?:${alternation})(?![a-zA-Z0-9_])\\1|\\$(?:${alternation})(?![a-zA-Z0-9_])`,
     'g',
   )
-  return selector.replace(pattern, (match, quote: string | undefined) => {
-    const name = match.slice(quote ? 2 : 1, quote ? match.length - 1 : undefined)
-    if (!Object.prototype.hasOwnProperty.call(variables, name)) {
-      return match
-    }
-    return `"${escapeCssString(String(variables[name]))}"`
-  })
+  return selector.replace(
+    pattern,
+    (match, quote: string | undefined, offset: number) => {
+      const name = match.slice(quote ? 2 : 1, quote ? match.length - 1 : undefined)
+      if (!Object.prototype.hasOwnProperty.call(variables, name)) {
+        return match
+      }
+      const rawVal = String(variables[name])
+      const prevChar = !quote && offset > 0 ? selector[offset - 1] : ''
+      if (!quote && (prevChar === '.' || prevChar === '#' || prevChar === '(')) {
+        return escapeCssString(rawVal)
+      }
+      return `"${escapeCssString(rawVal)}"`
+    },
+  )
 }
 
 
@@ -228,7 +236,11 @@ export function scopeXPathToContext(expression: string): string {
   parts.push(expression.slice(start))
 
   return parts
-    .map((part) => part.replace(/^(\s*)\/\//, '$1.//'))
+    // Scope `//` to the context root. The `(?:\(\s*)*` group also catches
+    // parenthesized expressions — `(//div)[1]` must become `(.//div)[1]`;
+    // previously it was left absolute, resolved against the document root and
+    // the out-of-subtree match got filtered away, silently returning nothing.
+    .map((part) => part.replace(/^(\s*(?:\(\s*)*)\/\//, '$1.//'))
     .join('|')
 }
 
@@ -267,11 +279,13 @@ function scopeBranchToRoot(root: Element, branch: string): string {
   if (combinatorIndex < 0) return `:scope ${trimmed}`
   const firstCompound = trimmed.slice(0, combinatorIndex).trim()
   const rest = trimmed.slice(combinatorIndex).trimStart()
-  try {
-    if (firstCompound && root.matches(firstCompound)) {
-      return `:scope ${rest}`
-    }
-  } catch {}
+  if (!/^[+~]/.test(rest)) {
+    try {
+      if (firstCompound && root.matches(firstCompound)) {
+        return `:scope ${rest}, :scope ${trimmed}`
+      }
+    } catch {}
+  }
   return `:scope ${trimmed}`
 }
 
@@ -346,13 +360,25 @@ export function tryNativeCssQuery(
 export function filterByTypePosition(
   wrappers: readonly (Element | InternalNodeWrapper)[],
   filters: readonly TypePositionFilter[],
+  nativeVerifySelector?: string,
 ): Array<Element | InternalNodeWrapper> {
   return wrappers.filter((item) => {
-    if ('kind' in item) {
-      const element = item.kind === 'element' ? item.element : (item.parentElement ?? null)
-      return element !== null && elementMatchesTypePositionFilters(element, filters)
+    const element =
+      'kind' in item
+        ? item.kind === 'element'
+          ? item.element
+          : (item.parentElement ?? null)
+        : item
+    if (!element) return false
+    if (filters.length > 0 && !elementMatchesTypePositionFilters(element, filters)) {
+      return false
     }
-    return elementMatchesTypePositionFilters(item, filters)
+    if (nativeVerifySelector && typeof element.matches === 'function') {
+      try {
+        return element.matches(nativeVerifySelector)
+      } catch {}
+    }
+    return true
   })
 }
 
@@ -385,20 +411,40 @@ export function runXPathQuery(
       for (let i = 0; i < snapshot.snapshotLength; i++) {
         const item = snapshot.snapshotItem(i)
         if (!item || seenNodes.has(item)) continue
-        seenNodes.add(item)
         if (item.nodeType === 1) {
-          matchedWrappers.push(item as Element)
+          const el = item as Element
+          if (!rootIsDocumentElement && !roots.some((r) => r.contains(el))) {
+            continue
+          }
+          seenNodes.add(item)
+          matchedWrappers.push(el)
         } else if (item.nodeType === 3) {
+          const parentEl = getDeepParentElement(item)
+          if (
+            !rootIsDocumentElement &&
+            (!parentEl || !roots.some((r) => r.contains(parentEl)))
+          ) {
+            continue
+          }
+          seenNodes.add(item)
           matchedWrappers.push({
             kind: 'text',
             textValue: item.nodeValue ?? '',
-            parentElement: getDeepParentElement(item),
+            parentElement: parentEl,
           })
         } else if (item.nodeType === 2) {
+          const ownerEl = (item as Attr).ownerElement
+          if (
+            !rootIsDocumentElement &&
+            (!ownerEl || !roots.some((r) => r.contains(ownerEl)))
+          ) {
+            continue
+          }
+          seenNodes.add(item)
           matchedWrappers.push({
             kind: 'text',
             textValue: (item as Attr).value ?? '',
-            parentElement: (item as Attr).ownerElement,
+            parentElement: ownerEl,
           })
         }
       }
