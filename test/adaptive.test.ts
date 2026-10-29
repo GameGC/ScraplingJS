@@ -47,11 +47,11 @@ describe('Adaptive Element Relocation & Storage', () => {
       </div>
     `
 
-    const oldPage = new Selector(originalHtml, { url: 'example.com', adaptive: true })
-    const newPage = new Selector(changedHtml, { url: 'example.com', adaptive: true })
+    const oldPage = new Selector(originalHtml, { url: 'example.com' })
+    const newPage = new Selector(changedHtml, { url: 'example.com' })
 
     oldPage.css('#p1, #p2', { autoSave: true })
-    const relocated = newPage.css('#p1', { adaptive: true })
+    const relocated = newPage.css('#p1', {})
 
     expect(relocated.length).toBeGreaterThan(0)
     expect(relocated[0].attrib['data-id'].toString()).toBe('p1')
@@ -70,13 +70,12 @@ describe('Adaptive Element Relocation & Storage', () => {
     `
     const changedHtml = '<html><body><span>totally unrelated content</span></body></html>'
 
-    const oldPage = new Selector(originalHtml, { url: 'example.com', adaptive: true })
-    const newPage = new Selector(changedHtml, { url: 'example.com', adaptive: true })
+    const oldPage = new Selector(originalHtml, { url: 'example.com' })
+    const newPage = new Selector(changedHtml, { url: 'example.com' })
 
     oldPage.css('#target', { identifier: 'target', autoSave: true })
     const result = newPage.css('#target', {
       identifier: 'target',
-      adaptive: true,
       autoSave: true,
       percentage: 95,
     })
@@ -98,7 +97,6 @@ describe('Adaptive Element Relocation & Storage', () => {
 
     const pageA = new Selector('<div><p id="item">Hello</p></div>', {
       url: 'https://site-a.com',
-      adaptive: true,
       _storage: storageA,
     })
     pageA.css('#item', { identifier: 'shared-id', autoSave: true })
@@ -128,39 +126,51 @@ describe('Adaptive Element Relocation & Storage', () => {
     expect(dict.rect).toBeUndefined()
   })
 
-  it('honours adaptive options passed through a Selectors collection', () => {
+  it('relocates through a Selectors collection', () => {
     const oldPage = new Selector(
       '<div class="card"><span class="old-price">$42</span></div>',
-      { url: 'example.com', adaptive: true },
+      { url: 'example.com' },
     )
     const newPage = new Selector(
       '<div class="card"><span class="new-price">$42</span></div>',
-      { url: 'example.com', adaptive: true },
+      { url: 'example.com' },
     )
 
     oldPage.css('.card').css('.old-price', { identifier: 'price', autoSave: true })
     const relocated = newPage
       .css('.card')
-      .css('.old-price', { identifier: 'price', adaptive: true })
+      .css('.old-price', { identifier: 'price' })
 
     expect(relocated.length).toBe(1)
     expect(relocated[0].text.toString()).toBe('$42')
   })
 
+  it('scores a relocation candidate with similarityTo', () => {
+    const original = new Selector('<div class="card"><button>Buy</button></div>')
+    const candidate = new Selector(
+      '<div class="card"><button class="primary" type="button">Buy</button></div>',
+    )
+
+    const originalButton = original.css('button')[0]
+    const candidateButton = candidate.css('button')[0]
+    expect(originalButton.similarityTo(candidateButton)).toBeGreaterThan(50)
+    expect(originalButton.similarityTo(originalButton)).toBeGreaterThan(90)
+    expect(originalButton.similarityTo(candidateButton.rawNode as Element)).toBeGreaterThan(50)
+  })
+
   it('does not duplicate a comma-group match after relocation', () => {
     const oldPage = new Selector(
       '<div class="card"><h1 class="old">Hero</h1></div>',
-      { url: 'example.com', adaptive: true },
+      { url: 'example.com' },
     )
     const newPage = new Selector(
       '<div class="card"><h2 class="fallback">Hero</h2></div>',
-      { url: 'example.com', adaptive: true },
+      { url: 'example.com' },
     )
 
     oldPage.css('h1.old', { identifier: 'hero-title', autoSave: true })
     const result = newPage.css('h1.old, h2.fallback', {
       identifier: 'hero-title',
-      adaptive: true,
       autoSave: true,
     })
 

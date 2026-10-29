@@ -19,6 +19,7 @@ import { isElementNode } from '../core/dom-utils'
 import { ElementHandleError } from '../core/errors'
 import { generateElementSelector } from '../core/mixins'
 import { relocateHighestScoring } from '../core/relocator'
+import { calculateSimilarityScore } from '../core/similarity'
 import { StorageTools, getElementDirectText } from '../core/storage-tools'
 import {
   cssToXpath,
@@ -47,6 +48,7 @@ import {
   isRemoteHandle,
   readHandleOuterHtml,
   resolveElementHandle,
+  type PageContentProvider,
 } from './element-handle'
 import {
   formatPrettyHtml,
@@ -78,7 +80,6 @@ export function isDomRootNode(
 export class Selector {
   readonly url: string
   readonly encoding: string
-  private readonly _adaptiveEnabled: boolean
   private readonly _pierceShadow: boolean
   private readonly _keepComments: boolean
   private readonly _rawBody: string | Uint8Array
@@ -147,54 +148,49 @@ export class Selector {
     this._rawBody = loaded.rawBody
 
     if (this._wrapper.kind === 'text') {
-      this._adaptiveEnabled = false
       return this.createProxy()
     }
 
-    this._adaptiveEnabled = opts.adaptive !== undefined ? Boolean(opts.adaptive) : true
-
-    if (this._adaptiveEnabled) {
-      if (opts._storage) {
-        this._storage = opts._storage
-      } else if (opts.storage !== undefined) {
-        const storageArg = opts.storage
-        const storageArgs = opts.storageArgs ??
-          opts.storage_args ?? {
-            storage_file: ':default:',
-            url: this.url,
-          }
-        if (
-          typeof storageArg === 'object' &&
-          storageArg !== null &&
-          'save' in storageArg &&
-          typeof (storageArg as StorageSystem).save === 'function' &&
-          'retrieve' in storageArg &&
-          typeof (storageArg as StorageSystem).retrieve === 'function'
-        ) {
-          this._storage = storageArg as StorageSystem
-        } else if (
-          typeof storageArg === 'function' &&
-          (storageArg === MemoryStorageSystem ||
-            storageArg === AutoStorageSystem ||
-            storageArg.prototype instanceof StorageSystemMixin ||
-            (typeof storageArg.prototype?.save === 'function' &&
-              typeof storageArg.prototype?.retrieve === 'function'))
-        ) {
-          const StorageCtor = storageArg as new (options?: unknown) => StorageSystem
-          this._storage = new StorageCtor(storageArgs)
-        } else {
-          throw new Error(
-            'Storage system must be inherited from class `StorageSystemMixin` or implement save/retrieve',
-          )
+    if (opts._storage) {
+      this._storage = opts._storage
+    } else if (opts.storage !== undefined) {
+      const storageArg = opts.storage
+      const storageArgs = opts.storageArgs ??
+        opts.storage_args ?? {
+          storage_file: ':default:',
+          url: this.url,
         }
+      if (
+        typeof storageArg === 'object' &&
+        storageArg !== null &&
+        'save' in storageArg &&
+        typeof (storageArg as StorageSystem).save === 'function' &&
+        'retrieve' in storageArg &&
+        typeof (storageArg as StorageSystem).retrieve === 'function'
+      ) {
+        this._storage = storageArg as StorageSystem
+      } else if (
+        typeof storageArg === 'function' &&
+        (storageArg === MemoryStorageSystem ||
+          storageArg === AutoStorageSystem ||
+          storageArg.prototype instanceof StorageSystemMixin ||
+          (typeof storageArg.prototype?.save === 'function' &&
+            typeof storageArg.prototype?.retrieve === 'function'))
+      ) {
+        const StorageCtor = storageArg as new (options?: unknown) => StorageSystem
+        this._storage = new StorageCtor(storageArgs)
       } else {
-        const storageArgs = opts.storageArgs ??
-          opts.storage_args ?? {
-            storage_file: ':default:',
-            url: this.url,
-          }
-        this._storage = new AutoStorageSystem(storageArgs)
+        throw new Error(
+          'Storage system must be inherited from class `StorageSystemMixin` or implement save/retrieve',
+        )
       }
+    } else {
+      const storageArgs = opts.storageArgs ??
+        opts.storage_args ?? {
+          storage_file: ':default:',
+          url: this.url,
+        }
+      this._storage = new AutoStorageSystem(storageArgs)
     }
 
     return this.createProxy()
@@ -205,7 +201,6 @@ export class Selector {
     options?: Omit<SelectorOptions, 'content' | 'root'>,
   ): Selector {
     return new Selector({
-      adaptive: true,
       pierceShadow: true,
       ...options,
       url: options?.url ?? doc.location?.href ?? '',
@@ -218,12 +213,33 @@ export class Selector {
     options?: Omit<SelectorOptions, 'content' | 'root'>,
   ): Selector {
     return new Selector({
-      adaptive: true,
       pierceShadow: true,
       ...options,
       url: options?.url ?? element.ownerDocument?.location?.href ?? '',
       root: element,
     })
+  }
+
+  static fromHtml(
+    html: string,
+    options?: Omit<SelectorOptions, 'content' | 'root'>,
+  ): Selector {
+    if (typeof html !== 'string') {
+      throw new TypeError('Selector.fromHtml() expects an HTML string')
+    }
+    return new Selector({ ...options, content: html })
+  }
+
+  static async fromPage(
+    page: PageContentProvider,
+    options?: Omit<SelectorOptions, 'content' | 'root'>,
+  ): Promise<Selector> {
+    if (!page || typeof page.content !== 'function') {
+      throw new TypeError(
+        'Selector.fromPage() expects a Puppeteer or Playwright Page: an object with a content() method.',
+      )
+    }
+    return new Selector({ ...options, content: await page.content() })
   }
 
   static async fromHandle(
@@ -284,7 +300,6 @@ export class Selector {
       root: node,
       url: this.url,
       encoding: this.encoding,
-      adaptive: this._adaptiveEnabled,
       pierceShadow: this._pierceShadow,
       _storage: this._storage ?? undefined,
       keepComments: this._keepComments,
@@ -360,6 +375,17 @@ export class Selector {
       return new TextHandler(this._wrapper.textValue)
     }
     return new TextHandler(formatPrettyHtml(this._wrapper.element))
+  }
+
+  similarityTo(target: Selector | Element | ElementFingerprint): number {
+    if (!this.rawNode) {
+      return 0
+    }
+    const original = StorageTools.elementToDict(this.rawNode)
+    if (target instanceof Selector) {
+      return target.rawNode ? calculateSimilarityScore(original, target.rawNode) : 0
+    }
+    return calculateSimilarityScore(original, target)
   }
 
   hasClass(className: string): boolean {
@@ -656,7 +682,6 @@ export class Selector {
   css(
     selector: string,
     identifierOrOptions?: string | AdaptiveQueryOptions,
-    adaptive?: boolean,
     autoSave?: boolean,
     percentage?: number,
     variables?: Record<string, string | number>,
@@ -664,7 +689,6 @@ export class Selector {
   css(
     selector: string,
     identifierOrOptions: string | AdaptiveQueryOptions | Record<string, string | number> = '',
-    adaptive?: boolean,
     autoSave?: boolean,
     percentage = 40,
     variables?: Record<string, string | number>,
@@ -675,11 +699,10 @@ export class Selector {
 
     const settings = resolveCssQuerySettings(
       identifierOrOptions,
-      adaptive,
       autoSave,
       percentage,
       variables,
-      { adaptive: this._adaptiveEnabled, autoSave: this._adaptiveEnabled },
+      { autoSave: true },
     )
     const interpolatedSelector = interpolateCssSelector(selector, settings.variables)
     const contextRoots = collectQueryContextRoots(
@@ -703,15 +726,12 @@ export class Selector {
     let sawDirectMatch = false
 
     for (const singleSelector of branches) {
-      const branchResults = this.runCssQuery(
-        singleSelector,
-        { ...settings, adaptive: false, autoSave: false },
-        this._wrapper.element,
-        contextRoots,
+      const branchResults = this.convertElements(
+        this.collectCssMatches(singleSelector, this._wrapper.element, contextRoots),
       )
       if (branchResults.length === 0) continue
       sawDirectMatch = true
-      if (this._adaptiveEnabled && settings.autoSave) {
+      if (settings.autoSave) {
         const target = branchResults[0]?.rawNode ?? null
         if (target) {
           // With an explicit identifier all branches share one fingerprint;
@@ -749,10 +769,6 @@ export class Selector {
       return deduped
     }
 
-    if (!settings.adaptive) {
-      return combinedResults
-    }
-
     return this.finalizeQuery(
       [],
       settings,
@@ -760,25 +776,23 @@ export class Selector {
     )
   }
 
-  private runCssQuery(
+  private collectCssMatches(
     cssSelector: string,
-    settings: CssQuerySettings,
     rootElement: Element,
     contextRoots: readonly Element[],
-  ): Selectors {
+  ): Array<Element | InternalNodeWrapper> {
     const typePosition = extractTypePositionFilters(cssSelector)
     const executableSelector = typePosition ? typePosition.selector : cssSelector
     const xpathSelector = cssToXpath(executableSelector)
     const nativeMatches = tryNativeCssQuery(rootElement, executableSelector, contextRoots)
     if (nativeMatches) {
-      const filtered = typePosition
+      return typePosition
         ? filterByTypePosition(
             nativeMatches,
             typePosition.filters,
             typePosition.nativeVerifySelector,
           )
         : nativeMatches
-      return this.finalizeQuery(filtered, settings, cssSelector)
     }
 
     const matchedWrappers = runXPathQuery(
@@ -789,21 +803,84 @@ export class Selector {
       this._dom,
       contextRoots,
     )
-    const filtered = typePosition
+    return typePosition
       ? filterByTypePosition(
           matchedWrappers,
           typePosition.filters,
           typePosition.nativeVerifySelector,
         )
       : matchedWrappers
-    return this.finalizeQuery(filtered, settings, cssSelector)
+  }
+
+  private runCssQuery(
+    cssSelector: string,
+    settings: CssQuerySettings,
+    rootElement: Element,
+    contextRoots: readonly Element[],
+  ): Selectors {
+    return this.finalizeQuery(
+      this.collectCssMatches(cssSelector, rootElement, contextRoots),
+      settings,
+      cssSelector,
+    )
+  }
+
+  /** @internal Direct query without auto-save or relocation. */
+  _queryDirect(
+    selector: string,
+    mode: 'css' | 'xpath' = 'css',
+    options?: { variables?: Record<string, string | number | boolean> },
+  ): Selectors {
+    if (this._wrapper.kind === 'text') {
+      return new Selectors()
+    }
+    const variables = options?.variables ?? {}
+    if (mode === 'xpath') {
+      const resolvedXpath = interpolateXPathSelector(
+        selector,
+        variables as Record<string, string | number>,
+      )
+      const matchedWrappers = runXPathQuery(
+        this._wrapper.element,
+        resolvedXpath,
+        this._pierceShadow,
+        selector,
+        this._dom,
+      )
+      return this.convertElements(matchedWrappers)
+    }
+
+    const interpolatedSelector = interpolateCssSelector(
+      selector,
+      variables as Record<string, string | number>,
+    )
+    const contextRoots = collectQueryContextRoots(
+      this._wrapper.element,
+      this._pierceShadow,
+    )
+    const branches = interpolatedSelector.includes(',')
+      ? splitCssSelectors(interpolatedSelector)
+      : [interpolatedSelector]
+    const matches: Array<Element | InternalNodeWrapper> = []
+    const seen = new Set<Element>()
+    for (const branch of branches) {
+      for (const match of this.collectCssMatches(branch, this._wrapper.element, contextRoots)) {
+        const node =
+          'kind' in match ? (match.kind === 'element' ? match.element : null) : match
+        if (node) {
+          if (seen.has(node)) continue
+          seen.add(node)
+        }
+        matches.push(match)
+      }
+    }
+    return this.convertElements(matches)
   }
 
   private finalizeQuery(
     matchedWrappers: Array<Element | InternalNodeWrapper>,
     settings: {
       identifier: string
-      adaptive: boolean
       autoSave: boolean
       percentage: number
     },
@@ -812,7 +889,7 @@ export class Selector {
     const identifier = settings.identifier || fallbackIdentifier
 
     if (matchedWrappers.length > 0) {
-      if (this._adaptiveEnabled && settings.autoSave) {
+      if (settings.autoSave) {
         const firstItem = matchedWrappers[0]
         let targetEl: Element | null | undefined
         if ('kind' in firstItem) {
@@ -827,19 +904,17 @@ export class Selector {
       return this.convertElements(matchedWrappers)
     }
 
-    if (this._adaptiveEnabled && settings.adaptive) {
-      const elementData = this.retrieve(identifier)
-      if (elementData) {
-        const relocatedElements = this.relocate(
-          elementData,
-          settings.percentage,
-          false,
-        )
-        if (relocatedElements.length > 0 && settings.autoSave) {
-          this.save(relocatedElements[0], identifier)
-        }
-        return this.convertElements(relocatedElements)
+    const elementData = this.retrieve(identifier)
+    if (elementData) {
+      const relocatedElements = this.relocate(
+        elementData,
+        settings.percentage,
+        false,
+      )
+      if (relocatedElements.length > 0 && settings.autoSave) {
+        this.save(relocatedElements[0], identifier)
       }
+      return this.convertElements(relocatedElements)
     }
 
     return new Selectors()
@@ -852,7 +927,6 @@ export class Selector {
   xpath(
     selector: string,
     identifierOrOptions?: string | AdaptiveQueryOptions,
-    adaptive?: boolean,
     autoSave?: boolean,
     percentage?: number,
     variables?: Record<string, string | number>,
@@ -860,7 +934,6 @@ export class Selector {
   xpath(
     selector: string,
     identifierOrOptions: string | AdaptiveQueryOptions | Record<string, string | number> = '',
-    adaptive?: boolean,
     autoSave?: boolean,
     percentage = 40,
     variables?: Record<string, string | number>,
@@ -871,11 +944,10 @@ export class Selector {
 
     const settings = resolveXPathQuerySettings(
       identifierOrOptions,
-      adaptive,
       autoSave,
       percentage,
       variables,
-      { adaptive: this._adaptiveEnabled, autoSave: this._adaptiveEnabled },
+      { autoSave: true },
     )
     const resolvedXpath = interpolateXPathSelector(selector, settings.variables)
     const matchedWrappers = runXPathQuery(
@@ -896,7 +968,7 @@ export class Selector {
 
     let results: Selectors
     if (selectors.length > 0) {
-      results = this.css(selectors.join(', '), { adaptive: false, autoSave: false })
+      results = this._queryDirect(selectors.join(', '))
     } else {
       results = this.belowElements
     }
@@ -925,43 +997,38 @@ export class Selector {
   }
 
   save(element: Selector | Element, identifier: string): void {
-    if (this._adaptiveEnabled && this._storage) {
-      let targetElement: Element | null = null
-      if (element instanceof Selector) {
-        if (element._wrapper.kind === 'text') {
-          targetElement = element._wrapper.parentElement ?? null
-        } else {
-          targetElement = element.rawNode
-        }
-      } else if (isElementNode(element)) {
-        targetElement = element
+    if (!this._storage) {
+      return
+    }
+    let targetElement: Element | null = null
+    if (element instanceof Selector) {
+      if (element._wrapper.kind === 'text') {
+        targetElement = element._wrapper.parentElement ?? null
+      } else {
+        targetElement = element.rawNode
       }
-      if (targetElement) {
-        this._storage.save(targetElement, identifier)
-      }
-    } else {
-      throw new Error(
-        "Can't use `adaptive` features while it's disabled globally, you have to start a new class instance.",
-      )
+    } else if (isElementNode(element)) {
+      targetElement = element
+    }
+    if (targetElement) {
+      this._storage.save(targetElement, identifier)
     }
   }
 
   retrieve(identifier: string): ElementFingerprint | null {
-    if (this._adaptiveEnabled && this._storage) {
-      const res = this._storage.retrieve(identifier)
-      if (res && typeof (res as Promise<unknown>).then === 'function') {
-        if (typeof (res as Promise<unknown>).catch === 'function') {
-          (res as Promise<unknown>).catch(() => {})
-        }
-        throw new Error(
-          `Storage returned an unhydrated Promise for identifier "${identifier}" during synchronous retrieval. Call "await storage.hydrate()" or use synchronous storage before querying.`,
-        )
-      }
-      return res as ElementFingerprint | null
+    if (!this._storage) {
+      return null
     }
-    throw new Error(
-      "Can't use `adaptive` features while it's disabled globally, you have to start a new class instance.",
-    )
+    const res = this._storage.retrieve(identifier)
+    if (res && typeof (res as Promise<unknown>).then === 'function') {
+      if (typeof (res as Promise<unknown>).catch === 'function') {
+        (res as Promise<unknown>).catch(() => {})
+      }
+      throw new Error(
+        `Storage returned an unhydrated Promise for identifier "${identifier}" during synchronous retrieval. Call "await storage.hydrate()" or use synchronous storage before querying.`,
+      )
+    }
+    return res as ElementFingerprint | null
   }
 
   json<T = Record<string, unknown>>(): T {

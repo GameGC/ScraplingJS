@@ -7,7 +7,6 @@ import {
   createScrapling,
   htmlToMarkdown,
   isHiddenElement,
-  runBrowserActions,
   searchSnapshot,
   type DomAdapter,
 } from '../src'
@@ -392,40 +391,10 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     expect(filtered).toContain('heading "Target Item"')
   })
 
-  it('executes adaptive browser actions on live DOM elements', async () => {
-    const wrapper = document.createElement('div')
-    wrapper.innerHTML = `
-      <form id="test-form">
-        <input id="username-input" type="text" value="" />
-        <input id="agree-check" type="checkbox" />
-        <button id="submit-btn" type="button">Submit</button>
-      </form>
-    `
-    document.body.appendChild(wrapper)
-
-    let clicked = false
-    wrapper.querySelector('#submit-btn')?.addEventListener('click', () => {
-      clicked = true
-    })
-
-    await runBrowserActions([
-      { type: 'textbox', target: '#username-input', value: 'alice' },
-      { type: 'checkbox', target: '#agree-check', value: true },
-      { type: 'click', target: '#submit-btn' },
-    ])
-
-    expect((wrapper.querySelector('#username-input') as HTMLInputElement).value).toBe('alice')
-    expect((wrapper.querySelector('#agree-check') as HTMLInputElement).checked).toBe(true)
-    expect(clicked).toBe(true)
-
-    wrapper.remove()
-  })
-
-  it('fills contenteditable hosts and dispatches the requested mouse button', async () => {
+  it('fills contenteditable hosts through scrapling.fill', async () => {
     const wrapper = document.createElement('div')
     wrapper.innerHTML = `
       <div id="editor" contenteditable="true"></div>
-      <button id="menu-btn" type="button">Menu</button>
     `
     document.body.appendChild(wrapper)
 
@@ -435,23 +404,11 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
       inputFired = true
     })
 
-    const menuButton = wrapper.querySelector('#menu-btn') as HTMLButtonElement
-    let contextButton = -1
-    menuButton.addEventListener('contextmenu', (event) => {
-      contextButton = event.button
-    })
-
     const scrapling = createScrapling({ document })
     expect(scrapling.fill('#editor', 'Hello')).toBe(true)
     expect(editor.textContent).toBe('Hello')
     expect(editor.isContentEditable).toBe(true)
     expect(inputFired).toBe(true)
-
-    await runBrowserActions(
-      [{ type: 'click', target: '#menu-btn', button: 'right' }],
-      { document },
-    )
-    expect(contextButton).toBe(2)
 
     await scrapling.manager.destroy()
     wrapper.remove()

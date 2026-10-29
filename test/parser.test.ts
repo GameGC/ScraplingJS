@@ -76,7 +76,7 @@ const COMPLEX_HTML = `
 
 describe('Selector & Selectors Core', () => {
   it('selects basic and :not(:contains()) CSS selectors', () => {
-    const page = new Selector(COMPLEX_HTML, { adaptive: false })
+    const page = new Selector(COMPLEX_HTML, {})
     const elements = page.css('main #products .product-list article.product')
     expect(elements.length).toBe(3)
 
@@ -87,7 +87,7 @@ describe('Selector & Selectors Core', () => {
   })
 
   it('selects via XPath and XPath variables', () => {
-    const page = new Selector(COMPLEX_HTML, { adaptive: false })
+    const page = new Selector(COMPLEX_HTML, {})
     const reviews = page.xpath(
       '//section[@id="reviews"]//div[contains(@class, "review") and @data-rating >= 4]',
     )

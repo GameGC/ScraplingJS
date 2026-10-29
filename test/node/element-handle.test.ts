@@ -29,12 +29,40 @@ afterEach(() => {
   setDomAdapter(null)
 })
 
+describe('Selector.fromPage', () => {
+  it('snapshots the page content into an offline Selector', async () => {
+    setDomAdapter(createLinkedomAdapter())
+    const page = await Selector.fromPage(
+      { content: () => CARD_HTML },
+      {},
+    )
+
+    expect(page.css('button.cta').length).toBe(1)
+    expect(page.css('button.cta')[0].text.toString()).toBe('Buy')
+  })
+
+  it('rejects objects without a content() method', async () => {
+    await expect(Selector.fromPage({} as never)).rejects.toThrowError(/content\(\)/)
+  })
+})
+
+describe('Selector.fromHtml', () => {
+  it('builds a snapshot from a string', () => {
+    setDomAdapter(createLinkedomAdapter())
+    const page = Selector.fromHtml(CARD_HTML, {})
+    expect(page.xpath('//h2').length).toBe(1)
+  })
+
+  it('rejects non-string input', () => {
+    expect(() => Selector.fromHtml(42 as never)).toThrowError(/HTML string/)
+  })
+})
+
 describe('Selector.fromHandle', () => {
   it('snapshots a Puppeteer-like ElementHandle into an offline Selector', async () => {
     const dom = createLinkedomAdapter()
     const page = await Selector.fromHandle(fakeElementHandle(CARD_HTML), {
       dom,
-      adaptive: false,
     })
 
     expect(page.tag).toBe('div')

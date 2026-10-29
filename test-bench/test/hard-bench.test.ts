@@ -44,11 +44,10 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
   function train(storage: InstanceType<typeof MemoryStorageSystem>) {
     const basePage = new Selector(baseHtml, {
       url: 'https://indeed.com/jobs',
-      adaptive: true,
       storage,
     })
     for (const t of TARGET_ELEMENTS) {
-      const found = basePage.css(t.initialSelector, { adaptive: false })
+      const found = basePage.rawNode?.querySelectorAll(t.initialSelector) ?? []
       if (found.length > 0) {
         basePage.save(found[0], t.id)
       }
@@ -62,19 +61,17 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const page = new Selector(structuralHtml, {
       url: 'https://indeed.com/jobs',
-      adaptive: true,
       storage,
     })
 
     for (const t of TARGET_ELEMENTS) {
-      expect(page.css(t.initialSelector, { adaptive: false }).length).toBe(0)
+      expect(page.rawNode?.querySelectorAll(t.initialSelector).length ?? 0).toBe(0)
     }
 
     let recovered = 0
     for (const t of TARGET_ELEMENTS) {
       const hits = page.css(t.initialSelector, {
         identifier: t.id,
-        adaptive: true,
         percentage: 40,
       })
       expect(hits.length).toBeGreaterThan(0)
@@ -99,13 +96,11 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const page = new Selector(textDriftHtml, {
       url: 'https://indeed.com/jobs',
-      adaptive: true,
       storage,
     })
 
     const titleHits = page.css('h2.css-job-title-heading a', {
       identifier: 'job-title-1',
-      adaptive: true,
       percentage: 40,
     })
     expect(titleHits.length).toBeGreaterThan(0)
@@ -114,7 +109,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const companyHits = page.css('div.css-company-name', {
       identifier: 'job-company-1',
-      adaptive: true,
       percentage: 40,
     })
     expect(companyHits.length).toBeGreaterThan(0)
@@ -123,7 +117,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const submitHits = page.css('button.css-17qy6hn', {
       identifier: 'submit-button',
-      adaptive: true,
       percentage: 35,
     })
     expect(submitHits.length).toBeGreaterThan(0)
@@ -132,7 +125,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const applyHits = page.css('button.css-apply-button', {
       identifier: 'apply-button-1',
-      adaptive: true,
       percentage: 35,
     })
     expect(applyHits.length).toBeGreaterThan(0)
@@ -148,7 +140,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const page = new Selector(semanticHtml, {
       url: 'https://indeed.com/jobs',
-      adaptive: true,
       storage,
     })
 
@@ -156,7 +147,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
       const t = TARGET_ELEMENTS.find((x) => x.id === id)!
       const hits = page.css(t.initialSelector, {
         identifier: id,
-        adaptive: true,
         percentage: 40,
       })
       expect(hits.length).toBeGreaterThan(0)
@@ -165,7 +155,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const applyHits = page.css('button.css-apply-button', {
       identifier: 'apply-button-1',
-      adaptive: true,
       percentage: 35,
     })
     expect(applyHits.length).toBeGreaterThan(0)
@@ -177,7 +166,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const remoteHits = page.css('button.css-1k63ypn.active', {
       identifier: 'remote-filter',
-      adaptive: true,
       percentage: 35,
     })
     if (remoteHits.length > 0) {
@@ -186,7 +174,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const titleHits = page.css('h2.css-job-title-heading a', {
       identifier: 'job-title-1',
-      adaptive: true,
       percentage: 40,
     })
     expect(titleHits.length).toBeGreaterThan(0)
@@ -199,13 +186,11 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const page = new Selector(extremeHtml, {
       url: 'https://indeed.com/jobs',
-      adaptive: true,
       storage,
     })
 
     const what = page.css('input.css-1rtikjh', {
       identifier: 'what-input',
-      adaptive: true,
       percentage: 35,
     })
     expect(what.length).toBeGreaterThan(0)
@@ -213,14 +198,12 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const where = page.css('input.css-1lonhz0', {
       identifier: 'where-input',
-      adaptive: true,
       percentage: 35,
     })
     expect(where.length).toBeGreaterThan(0)
 
     const submit = page.css('button.css-17qy6hn', {
       identifier: 'submit-button',
-      adaptive: true,
       percentage: 30,
     })
     expect(submit.length).toBeGreaterThan(0)
@@ -229,7 +212,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const title = page.css('h2.css-job-title-heading a', {
       identifier: 'job-title-1',
-      adaptive: true,
       percentage: 40,
     })
     expect(title.length).toBeGreaterThan(0)
@@ -238,7 +220,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const company = page.css('div.css-company-name', {
       identifier: 'job-company-1',
-      adaptive: true,
       percentage: 40,
     })
     expect(company.length).toBeGreaterThan(0)
@@ -246,7 +227,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const next = page.css('button.serp-page-next', {
       identifier: 'pagination-next',
-      adaptive: true,
       percentage: 25,
     })
     if (next.length > 0) {
@@ -272,20 +252,17 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
 
     const page = new Selector(emptyJobsHtml, {
       url: 'https://indeed.com/jobs',
-      adaptive: true,
       storage,
     })
 
     const apply = page.css('button.css-apply-button', {
       identifier: 'apply-button-1',
-      adaptive: true,
       percentage: 50,
     })
     expect(apply.length).toBe(0)
 
     const salary = page.css('div.css-salary-badge', {
       identifier: 'job-salary-1',
-      adaptive: true,
       percentage: 50,
     })
     expect(salary.length).toBe(0)
@@ -306,7 +283,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
       train(storage)
       const page = new Selector(p.html, {
         url: `https://indeed.com/${p.id}`,
-        adaptive: true,
         storage,
       })
 
@@ -315,7 +291,6 @@ describe('HARD: ScraplingJS real-world migration resilience', () => {
       for (const t of TARGET_ELEMENTS) {
         const hits = page.css(t.initialSelector, {
           identifier: t.id,
-          adaptive: true,
           percentage: p.minScore,
         })
         if (hits.length === 0) {

@@ -180,7 +180,6 @@ export class PagePersistenceManager {
     return new Selector({
       root: targetRoot,
       url: this.url,
-      adaptive: true,
       pierceShadow: this.pierceShadow,
       _storage: this.storage,
       dom: this.dom,
@@ -237,16 +236,10 @@ export class PagePersistenceManager {
     rootSelector: Selector,
     selector: string,
     mode: 'css' | 'xpath' | 'text',
-    identifier: string,
     variables?: Record<string, string | number>,
   ): Selectors {
     if (mode === 'xpath') {
-      return rootSelector.xpath(selector, {
-        identifier,
-        adaptive: false,
-        autoSave: false,
-        variables,
-      })
+      return rootSelector._queryDirect(selector, 'xpath', { variables })
     }
     if (mode === 'text') {
       const targetText = normalizeTextQuery(selector)
@@ -256,12 +249,7 @@ export class PagePersistenceManager {
         cleanMatch: true,
       }) as Selectors
     }
-    return rootSelector.css(selector, {
-      identifier,
-      adaptive: false,
-      autoSave: false,
-      variables,
-    })
+    return rootSelector._queryDirect(selector, 'css', { variables })
   }
 
   resolve<T extends HTMLElement = HTMLElement>(
@@ -278,7 +266,6 @@ export class PagePersistenceManager {
 
     const primaryQuery = queries[0]
     const identifier = options?.identifier ?? primaryQuery
-    const adaptive = options?.adaptive ?? true
     const autoSave = options?.autoSave ?? options?.auto_save ?? true
     const percentage = options?.percentage ?? this.defaultPercentage
     const filter = options?.filter
@@ -290,7 +277,6 @@ export class PagePersistenceManager {
         rootSelector,
         q,
         mode,
-        identifier,
         options?.variables,
       )
       const filtered = filter
@@ -307,10 +293,6 @@ export class PagePersistenceManager {
         }
         return filtered
       }
-    }
-
-    if (!adaptive) {
-      return new Selectors()
     }
 
     const oldFingerprint = rootSelector.retrieve(identifier)
@@ -377,7 +359,6 @@ export class PagePersistenceManager {
       identifier: parsed.identifier,
       root: parsed.root,
       filter: parsed.filter,
-      adaptive: true,
       autoSave: true,
       multiple: false,
     })
@@ -400,7 +381,6 @@ export class PagePersistenceManager {
       identifier: parsed.identifier,
       root: parsed.root,
       filter: parsed.filter,
-      adaptive: true,
       autoSave: true,
       multiple: true,
     })
@@ -506,7 +486,6 @@ export class PagePersistenceManager {
         rootSelector,
         options.selector,
         mode,
-        identifier,
         variables,
       )
       if (!filter) return matches

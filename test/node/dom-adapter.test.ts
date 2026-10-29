@@ -58,7 +58,7 @@ describe('DomAdapter on the Node runtime', () => {
 
   it('parses HTML and answers CSS, XPath, text and attribute queries', () => {
     const dom = createLinkedomAdapter()
-    const page = new Selector(PAGE_HTML, { dom, adaptive: false })
+    const page = new Selector(PAGE_HTML, { dom })
 
     expect(page.css('ul.items > li').length).toBe(3)
     expect(page.xpath('//div[@id="app"]//li').length).toBe(3)
@@ -72,9 +72,20 @@ describe('DomAdapter on the Node runtime', () => {
     expect(String(page.getAllText())).toContain('Apply')
   })
 
+  it('parses full documents that start with a doctype', () => {
+    const dom = createLinkedomAdapter()
+    const page = new Selector(
+      '<!DOCTYPE html><html><body><main><span id="doctype-target">ok</span></main></body></html>',
+      { dom },
+    )
+
+    expect(page.css('#doctype-target').length).toBe(1)
+    expect(page.xpath('//span[@id="doctype-target"]').length).toBe(1)
+  })
+
   it('supports variables, findAll filters and similarity search through the adapter', () => {
     const dom = createLinkedomAdapter()
-    const page = new Selector(PAGE_HTML, { dom, adaptive: false })
+    const page = new Selector(PAGE_HTML, { dom })
 
     expect(page.css('[data-sku="$sku"]', { sku: 'SKU-3' }).length).toBe(1)
     expect(page.css('[data-sku="$sku"]', { sku: 'SKU-3' })[0].text.toString()).toBe('Gamma')
@@ -87,7 +98,7 @@ describe('DomAdapter on the Node runtime', () => {
     setDomAdapter(createLinkedomAdapter())
     expect(getDomAdapter().isElement({ nodeType: 1 })).toBe(true)
 
-    const page = new Selector(PAGE_HTML, { adaptive: false })
+    const page = new Selector(PAGE_HTML, {})
     expect(page.css('button.cta').length).toBe(1)
   })
 

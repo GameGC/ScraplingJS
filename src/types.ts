@@ -57,7 +57,6 @@ export interface SelectorOptions {
   encoding?: string
   keepComments?: boolean
   keep_comments?: boolean
-  adaptive?: boolean
   pierceShadow?: boolean
   pierce_shadow?: boolean
   storage?: StorageSystem | (new (options?: Record<string, unknown>) => StorageSystem)
@@ -69,7 +68,6 @@ export interface SelectorOptions {
 
 export interface AdaptiveQueryOptions {
   identifier?: string
-  adaptive?: boolean
   autoSave?: boolean
   auto_save?: boolean
   percentage?: number
@@ -164,96 +162,14 @@ export type RelocationCallback = (
   event: RelocationEvent,
 ) => void
 
-export type MouseButton = 'left' | 'right' | 'middle'
 export type SelectorWaitState = 'attached' | 'detached' | 'visible' | 'hidden'
-
-export interface MouseMoveAction {
-  type: 'move'
-  target?: string
-  x?: number
-  y?: number
-  steps?: number
-  timeout?: number
-}
-
-export interface MouseClickAction {
-  type: 'click'
-  target?: string
-  x?: number
-  y?: number
-  button?: MouseButton
-  click_count?: number
-  delay?: number
-  timeout?: number
-}
-
-export interface MouseWheelAction {
-  type: 'wheel'
-  delta_x?: number
-  delta_y?: number
-}
-
-export interface TextFormFieldAction {
-  type: 'textbox'
-  target: string
-  value: string
-  clear?: boolean
-  timeout?: number
-}
-
-export interface CheckboxFormFieldAction {
-  type: 'checkbox'
-  target: string
-  value: boolean
-  timeout?: number
-}
-
-export interface RadioFormFieldAction {
-  type: 'radio'
-  target: string
-  value: true
-  timeout?: number
-}
-
-export interface SelectFormFieldAction {
-  type: 'combobox'
-  target: string
-  value: string | string[]
-  timeout?: number
-}
-
-export interface KeyPressAction {
-  type: 'press_key'
-  key: string
-}
-
-export interface TimeWaitAction {
-  type: 'wait_time'
-  milliseconds: number
-}
 
 export interface ElementWaitAction {
   type: 'wait_element'
   target: string
   state?: SelectorWaitState
   timeout?: number
+  signal?: AbortSignal
 }
 
-export interface LoadWaitAction {
-  type: 'wait_load'
-  state: 'domcontentloaded' | 'load' | 'networkidle'
-  timeout?: number
-}
-
-export type BrowserAction =
-  | MouseMoveAction
-  | MouseClickAction
-  | MouseWheelAction
-  | TextFormFieldAction
-  | CheckboxFormFieldAction
-  | RadioFormFieldAction
-  | SelectFormFieldAction
-  | KeyPressAction
-  | TimeWaitAction
-  | ElementWaitAction
-  | LoadWaitAction
+export type BrowserAction = ElementWaitAction

@@ -57,32 +57,29 @@ async function runCliBenchmark() {
 
         const basePage = new Selector(baseHtml, {
           url: `https://indeed.com/${fwName}`,
-          adaptive: true,
           storage,
         })
 
         const fps = new Map<string, any>()
         for (const t of targets) {
-          const found = basePage.css(t.initialSelector, { adaptive: false })
-          if (found.length > 0 && found[0].rawNode) {
+          const found = basePage.rawNode?.querySelectorAll(t.initialSelector) ?? []
+          if (found.length > 0) {
             basePage.save(found[0], t.id)
-            fps.set(t.id, StorageTools.elementToDict(found[0].rawNode))
+            fps.set(t.id, StorageTools.elementToDict(found[0]))
           }
         }
 
         const mutatedPage = new Selector(mutatedHtml, {
           url: `https://indeed.com/${fwName}`,
-          adaptive: true,
           storage,
         })
 
         const rows = []
         for (const t of targets) {
           const tStart = performance.now()
-          const trad = mutatedPage.css(t.initialSelector, { adaptive: false })
+          const trad = mutatedPage.rawNode?.querySelectorAll(t.initialSelector) ?? []
           const adapt = mutatedPage.css(t.initialSelector, {
             identifier: t.id,
-            adaptive: true,
             percentage: 30,
           })
           const duration = Math.round((performance.now() - tStart) * 10) / 10

@@ -475,7 +475,7 @@ describe('Custom Save/Read Persistence Predicates & LocalStorage Integration', (
       </div>
     `
 
-    const relocated = manager.page.css('#add-to-cart', { identifier: 'add-to-cart', adaptive: true })
+    const relocated = manager.page.css('#add-to-cart', { identifier: 'add-to-cart' })
     expect(relocated.length).toBe(1)
     expect(relocated[0].hasClass('new-style')).toBe(true)
 

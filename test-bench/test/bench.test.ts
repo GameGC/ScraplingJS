@@ -54,42 +54,41 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
   })
 
   it('verifies baseline page elements are correctly discoverable', () => {
-    const page = new Selector(baseHtml, { url: 'https://indeed.com/jobs', adaptive: true })
+    const page = new Selector(baseHtml, { url: 'https://indeed.com/jobs' })
     for (const target of TARGET_ELEMENTS) {
-      const found = page.css(target.initialSelector, { adaptive: false })
+      const found = page.rawNode?.querySelectorAll(target.initialSelector) ?? []
       expect(found.length).toBeGreaterThan(0)
     }
   })
 
   it('proves traditional CSS selectors break (0% success) when framework/CSS hashes change', () => {
-    const nextClean = new Selector(nextHtml, { url: 'https://indeed.com/jobs', adaptive: false })
-    const vueClean = new Selector(vueHtml, { url: 'https://indeed.com/jobs', adaptive: false })
-    const svelteClean = new Selector(svelteHtml, { url: 'https://indeed.com/jobs', adaptive: false })
-    const nodeClean = new Selector(nodeHtml, { url: 'https://indeed.com/jobs', adaptive: false })
+    const nextClean = new Selector(nextHtml, { url: 'https://indeed.com/jobs' })
+    const vueClean = new Selector(vueHtml, { url: 'https://indeed.com/jobs' })
+    const svelteClean = new Selector(svelteHtml, { url: 'https://indeed.com/jobs' })
+    const nodeClean = new Selector(nodeHtml, { url: 'https://indeed.com/jobs' })
 
     for (const target of TARGET_ELEMENTS) {
-      expect(nextClean.css(target.initialSelector, { adaptive: false }).length).toBe(0)
-      expect(vueClean.css(target.initialSelector, { adaptive: false }).length).toBe(0)
-      expect(svelteClean.css(target.initialSelector, { adaptive: false }).length).toBe(0)
-      expect(nodeClean.css(target.initialSelector, { adaptive: false }).length).toBe(0)
+      expect(nextClean.rawNode?.querySelectorAll(target.initialSelector).length ?? 0).toBe(0)
+      expect(vueClean.rawNode?.querySelectorAll(target.initialSelector).length ?? 0).toBe(0)
+      expect(svelteClean.rawNode?.querySelectorAll(target.initialSelector).length ?? 0).toBe(0)
+      expect(nodeClean.rawNode?.querySelectorAll(target.initialSelector).length ?? 0).toBe(0)
     }
   })
 
   it('adaptively relocates all target elements on Next.js 15 (CSS Modules)', () => {
     const storage = new MemoryStorageSystem({ url: 'https://indeed.com/jobs' })
-    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
-      const el = basePage.css(target.initialSelector, { adaptive: false })[0]
+      const el = basePage.rawNode?.querySelectorAll(target.initialSelector)[0]
       basePage.save(el, target.id)
     }
 
-    const nextMigrated = new Selector(nextHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const nextMigrated = new Selector(nextHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
       const recovered = nextMigrated.css(target.initialSelector, {
         identifier: target.id,
-        adaptive: true,
         percentage: 35,
       })
       expectTargetMatch(target, recovered)
@@ -98,19 +97,18 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
 
   it('adaptively relocates all target elements on Vue 3 + Tailwind CSS', () => {
     const storage = new MemoryStorageSystem({ url: 'https://indeed.com/jobs' })
-    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
-      const el = basePage.css(target.initialSelector, { adaptive: false })[0]
+      const el = basePage.rawNode?.querySelectorAll(target.initialSelector)[0]
       basePage.save(el, target.id)
     }
 
-    const vueMigrated = new Selector(vueHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const vueMigrated = new Selector(vueHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
       const recovered = vueMigrated.css(target.initialSelector, {
         identifier: target.id,
-        adaptive: true,
         percentage: 35,
       })
       expectTargetMatch(target, recovered)
@@ -119,19 +117,18 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
 
   it('adaptively relocates all target elements on Svelte 5 (Scoped CSS)', () => {
     const storage = new MemoryStorageSystem({ url: 'https://indeed.com/jobs' })
-    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
-      const el = basePage.css(target.initialSelector, { adaptive: false })[0]
+      const el = basePage.rawNode?.querySelectorAll(target.initialSelector)[0]
       basePage.save(el, target.id)
     }
 
-    const svelteMigrated = new Selector(svelteHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const svelteMigrated = new Selector(svelteHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
       const recovered = svelteMigrated.css(target.initialSelector, {
         identifier: target.id,
-        adaptive: true,
         percentage: 35,
       })
       expectTargetMatch(target, recovered)
@@ -140,19 +137,18 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
 
   it('adaptively relocates all target elements on Node.js Express SSR (BEM)', () => {
     const storage = new MemoryStorageSystem({ url: 'https://indeed.com/jobs' })
-    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
-      const el = basePage.css(target.initialSelector, { adaptive: false })[0]
+      const el = basePage.rawNode?.querySelectorAll(target.initialSelector)[0]
       basePage.save(el, target.id)
     }
 
-    const nodeMigrated = new Selector(nodeHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const nodeMigrated = new Selector(nodeHtml, { url: 'https://indeed.com/jobs', storage })
 
     for (const target of TARGET_ELEMENTS) {
       const recovered = nodeMigrated.css(target.initialSelector, {
         identifier: target.id,
-        adaptive: true,
         percentage: 35,
       })
       expectTargetMatch(target, recovered)
@@ -161,7 +157,7 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
 
   it('survives randomized compilation arguments and hash perturbations', () => {
     const storage = new MemoryStorageSystem({ url: 'https://indeed.com/jobs' })
-    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const basePage = new Selector(baseHtml, { url: 'https://indeed.com/jobs', storage })
 
     const whatEl = basePage.css('input.css-1rtikjh')[0]
     basePage.save(whatEl, 'search-input')
@@ -172,19 +168,17 @@ describe('ScraplingJS Layout Mutation Test Bench', () => {
     const randomSeed = 'hash_' + Math.floor(Math.random() * 99999)
     const dynamicHtml = generateMutatedPage({ hashSeed: randomSeed, tagVariation: 'classic' })
 
-    const dynamicPage = new Selector(dynamicHtml, { url: 'https://indeed.com/jobs', adaptive: true, storage })
+    const dynamicPage = new Selector(dynamicHtml, { url: 'https://indeed.com/jobs', storage })
 
-    expect(dynamicPage.css('input.css-1rtikjh', { adaptive: false }).length).toBe(0)
-    expect(dynamicPage.css('button.css-17qy6hn', { adaptive: false }).length).toBe(0)
+    expect(dynamicPage.rawNode?.querySelectorAll('input.css-1rtikjh').length ?? 0).toBe(0)
+    expect(dynamicPage.rawNode?.querySelectorAll('button.css-17qy6hn').length ?? 0).toBe(0)
 
     const recoveredInput = dynamicPage.css('input.css-1rtikjh', {
       identifier: 'search-input',
-      adaptive: true,
       percentage: 35,
     })
     const recoveredSubmit = dynamicPage.css('button.css-17qy6hn', {
       identifier: 'submit-btn',
-      adaptive: true,
       percentage: 35,
     })
 

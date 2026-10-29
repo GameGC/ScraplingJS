@@ -17,7 +17,6 @@ import type { InternalNodeWrapper } from './html-loader'
 
 export interface CssQuerySettings {
   identifier: string
-  adaptive: boolean
   autoSave: boolean
   percentage: number
   variables: Record<string, string | number>
@@ -25,7 +24,6 @@ export interface CssQuerySettings {
 
 export interface XPathQuerySettings {
   identifier: string
-  adaptive: boolean
   autoSave: boolean
   percentage: number
   variables: Record<string, string | number | boolean>
@@ -33,14 +31,12 @@ export interface XPathQuerySettings {
 
 export function resolveCssQuerySettings(
   identifierOrOptions: string | AdaptiveQueryOptions | Record<string, string | number> = '',
-  adaptive: boolean | undefined,
   autoSave: boolean | undefined,
   percentage: number,
   variables: Record<string, string | number> | undefined,
-  defaults: { adaptive: boolean; autoSave: boolean },
+  defaults: { autoSave: boolean },
 ): CssQuerySettings {
   let identifier = ''
-  let isAdaptive = adaptive ?? defaults.adaptive
   let isAutoSave = autoSave ?? defaults.autoSave
   let minPercentage = percentage
   const cssVars: Record<string, string | number> = { ...(variables ?? {}) }
@@ -48,10 +44,6 @@ export function resolveCssQuerySettings(
   if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
     const opts = identifierOrOptions as AdaptiveQueryOptions
     identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
-    isAdaptive =
-      typeof opts.adaptive === 'boolean'
-        ? opts.adaptive
-        : (adaptive ?? defaults.adaptive)
     isAutoSave =
       typeof opts.autoSave === 'boolean'
         ? opts.autoSave
@@ -85,7 +77,6 @@ export function resolveCssQuerySettings(
 
   return {
     identifier,
-    adaptive: isAdaptive,
     autoSave: isAutoSave,
     percentage: minPercentage,
     variables: cssVars,
@@ -94,14 +85,12 @@ export function resolveCssQuerySettings(
 
 export function resolveXPathQuerySettings(
   identifierOrOptions: string | AdaptiveQueryOptions | Record<string, string | number> = '',
-  adaptive: boolean | undefined,
   autoSave: boolean | undefined,
   percentage: number,
   variables: Record<string, string | number> | undefined,
-  defaults: { adaptive: boolean; autoSave: boolean },
+  defaults: { autoSave: boolean },
 ): XPathQuerySettings {
   let identifier = ''
-  let isAdaptive = adaptive ?? defaults.adaptive
   let isAutoSave = autoSave ?? defaults.autoSave
   let minPercentage = percentage
   let xpathVars: Record<string, string | number | boolean> =
@@ -110,10 +99,6 @@ export function resolveXPathQuerySettings(
   if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
     const opts = identifierOrOptions as AdaptiveQueryOptions
     identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
-    isAdaptive =
-      typeof opts.adaptive === 'boolean'
-        ? opts.adaptive
-        : (adaptive ?? defaults.adaptive)
     isAutoSave =
       typeof opts.autoSave === 'boolean'
         ? opts.autoSave
@@ -141,7 +126,6 @@ export function resolveXPathQuerySettings(
 
   return {
     identifier,
-    adaptive: isAdaptive,
     autoSave: isAutoSave,
     percentage: minPercentage,
     variables: xpathVars,

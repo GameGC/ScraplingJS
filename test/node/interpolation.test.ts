@@ -53,10 +53,9 @@ describe('selector variable interpolation', () => {
     const settings = resolveXPathQuerySettings(
       { identifier: 'row', variables: { b: 2 } },
       undefined,
-      undefined,
       40,
       { a: 1 },
-      { adaptive: true, autoSave: true },
+      { autoSave: true },
     )
     expect(settings.variables).toEqual({ a: 1, b: 2 })
   })

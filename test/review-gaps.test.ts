@@ -13,6 +13,8 @@ import {
   searchSnapshot,
   setNativeCheckboxValue,
   setNativeInputValue,
+  validateActions,
+  type BrowserAction,
   type ElementFingerprint,
 } from '../src'
 
@@ -92,49 +94,9 @@ describe('12 Review Test-Gaps Suite', () => {
       expect(rejected).toBe(true)
     }, 1500)
 
-    it('cleans up abort listener on normal completion of wait_time action', async () => {
-      const ac = new AbortController()
-      let listenerCount = 0
-      const origAdd = ac.signal.addEventListener.bind(ac.signal)
-      const origRemove = ac.signal.removeEventListener.bind(ac.signal)
-      ac.signal.addEventListener = (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
-        if (type === 'abort') listenerCount++
-        return origAdd(type, listener, options)
-      }
-      ac.signal.removeEventListener = (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => {
-        if (type === 'abort') listenerCount--
-        return origRemove(type, listener, options)
-      }
-
-      await runBrowserActions(
-        [{ type: 'wait_time', milliseconds: 10, signal: ac.signal }],
-        { document },
-      )
-
-      expect(listenerCount).toBe(0)
-    })
-  })
-
-  describe('Gap 2: wait_load in iframe (doc.defaultView)', () => {
-    it('attaches load listener to doc.defaultView rather than window and respects iframe state', async () => {
-      const iframe = document.createElement('iframe')
-      document.body.appendChild(iframe)
-
-      const iframeDoc = iframe.contentDocument
-      expect(iframeDoc).not.toBeNull()
-      expect(iframeDoc?.defaultView).toBe(iframe.contentWindow)
-
-      if (iframeDoc) {
-        const start = Date.now()
-        await runBrowserActions(
-          [{ type: 'wait_load', state: 'domcontentloaded', timeout: 500 }],
-          { document: iframeDoc },
-        )
-        const elapsed = Date.now() - start
-        expect(elapsed).toBeLessThan(600)
-      }
-
-      iframe.remove()
+    it('rejects native one-liner actions that are no longer wrapped', () => {
+      const legacy = [{ type: 'click', target: '#buy' }] as unknown as BrowserAction[]
+      expect(() => validateActions(legacy)).toThrow("unsupported type 'click'")
     })
   })
 
@@ -189,7 +151,7 @@ describe('12 Review Test-Gaps Suite', () => {
           <span id="numeric-item">Item count 42</span>
         </div>
       `
-      const page = new Selector(html, { adaptive: false })
+      const page = new Selector(html, {})
 
       const res1 = page.xpath('//span[text()=$val]', {
         variables: { val: 'Prices: $& and $100' },
@@ -223,7 +185,7 @@ describe('12 Review Test-Gaps Suite', () => {
           </article>
         </section>
       `
-      const page = new Selector(html, { adaptive: false })
+      const page = new Selector(html, {})
 
       const res1 = page.css('article[data-category=$cat][data-user=$usr]', {
         variables: { cat: 'electronics', usr: 'alice' },
@@ -248,7 +210,7 @@ describe('12 Review Test-Gaps Suite', () => {
           </section>
         </div>
       `
-      const page = new Selector(html, { adaptive: false })
+      const page = new Selector(html, {})
       const groups = page.css('.group')
       const matched = groups.css('span[data-tag=$target]', {
         variables: { target: 'beta' },
@@ -331,7 +293,7 @@ describe('12 Review Test-Gaps Suite', () => {
   })
 
   describe('Gap 8: React synthetic event-compatible native value and checked setters', () => {
-    it('invokes prototype property descriptors and dispatches input/change events for inputs and checkboxes', async () => {
+    it('invokes prototype property descriptors and dispatches input/change events for inputs and checkboxes', () => {
       const container = document.createElement('div')
       container.innerHTML = `
         <input id="react-input" type="text" value="" />
@@ -369,10 +331,7 @@ describe('12 Review Test-Gaps Suite', () => {
         changeEventFired = true
       })
 
-      await runBrowserActions(
-        [{ type: 'textbox', target: '#react-input', value: 'Hello World' }],
-        { document },
-      )
+      setNativeInputValue(input, 'Hello World')
 
       expect(interceptedInputValue).toBe('Hello World')
       expect(input.value).toBe('Hello World')
@@ -384,38 +343,12 @@ describe('12 Review Test-Gaps Suite', () => {
         checkboxChangeFired = true
       })
 
-      await runBrowserActions(
-        [{ type: 'checkbox', target: '#react-checkbox', value: true }],
-        { document },
-      )
+      setNativeCheckboxValue(checkbox, true)
 
       expect(checkbox.checked).toBe(true)
       expect(checkboxChangeFired).toBe(true)
 
       container.remove()
-    })
-
-    it('guards against non-input elements and throws descriptive error when textbox action targets non-input', async () => {
-      const container = document.createElement('div')
-      container.innerHTML = `
-        <div id="fake-input">Not an input</div>
-      `
-      document.body.appendChild(container)
-
-      let errorThrown: Error | null = null
-      try {
-        await runBrowserActions(
-          [{ type: 'textbox', target: '#fake-input', value: 'Test' }],
-          { document },
-        )
-      } catch (err: unknown) {
-        errorThrown = err instanceof Error ? err : new Error(String(err))
-      } finally {
-        container.remove()
-      }
-
-      expect(errorThrown).not.toBeNull()
-      expect(errorThrown?.message).toMatch(/HTMLInputElement|failed/i)
     })
   })
 
@@ -426,7 +359,7 @@ describe('12 Review Test-Gaps Suite', () => {
         <div id="with'single'quote">Single Quote ID</div>
         <div id="with&quot;double&quot;quote">Double Quote ID</div>
       `
-      const page = new Selector(html, { adaptive: false })
+      const page = new Selector(html, {})
 
       const colonEl = page.css('[id="user:profile.card"]')
       expect(colonEl.length).toBe(1)
@@ -450,7 +383,7 @@ describe('12 Review Test-Gaps Suite', () => {
           <span id="b3" data-status="alert-fire 🔥">Hot Alert</span>
         </div>
       `
-      const page = new Selector(html, { adaptive: false })
+      const page = new Selector(html, {})
 
       const res1 = page.css('span[data-badge$="🎉"]')
       expect(res1.length).toBe(1)

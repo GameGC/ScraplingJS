@@ -157,29 +157,26 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
 
         const basePage = new Selector(baseHtml, {
           url: 'https://indeed.com/bench',
-          adaptive: true,
           storage,
         })
-        const foundBase = basePage.css(target.initialSelector, { adaptive: false, autoSave: false })
+        const foundBase = basePage.rawNode?.querySelectorAll(target.initialSelector) ?? []
         let baseFp: any = null
-        if (foundBase.length > 0 && foundBase[0].rawNode) {
+        if (foundBase.length > 0) {
           basePage.save(foundBase[0], target.id)
-          baseFp = StorageTools.elementToDict(foundBase[0].rawNode)
+          baseFp = StorageTools.elementToDict(foundBase[0])
         }
 
         const startTime = performance.now()
         const mutatedPage = new Selector(mutatedHtml, {
           url: 'https://indeed.com/bench',
-          adaptive: true,
           storage,
         })
 
-        const tradResult = mutatedPage.css(target.initialSelector, { adaptive: false })
+        const tradResult = mutatedPage.rawNode?.querySelectorAll(target.initialSelector) ?? []
         const traditionalFound = tradResult.length > 0
 
         const adaptResult = mutatedPage.css(target.initialSelector, {
           identifier: target.id,
-          adaptive: true,
           percentage: 30,
         })
         const durationMs = Math.round((performance.now() - startTime) * 100) / 100
@@ -255,32 +252,29 @@ export async function createBenchServer(port = 4000): Promise<ServerInstance> {
 
           const basePage = new Selector(baseHtml, {
             url: `https://indeed.com/${fw.id}`,
-            adaptive: true,
             storage,
           })
 
           const fingerprints = new Map<string, any>()
           for (const target of targets) {
-            const found = basePage.css(target.initialSelector, { adaptive: false })
-            if (found.length > 0 && found[0].rawNode) {
+            const found = basePage.rawNode?.querySelectorAll(target.initialSelector) ?? []
+            if (found.length > 0) {
               basePage.save(found[0], target.id)
-              fingerprints.set(target.id, StorageTools.elementToDict(found[0].rawNode))
+              fingerprints.set(target.id, StorageTools.elementToDict(found[0]))
             }
           }
 
           const mutatedPage = new Selector(mutatedHtml, {
             url: `https://indeed.com/${fw.id}`,
-            adaptive: true,
             storage,
           })
 
           const results = []
           for (const target of targets) {
-            const tradResult = mutatedPage.css(target.initialSelector, { adaptive: false })
+            const tradResult = mutatedPage.rawNode?.querySelectorAll(target.initialSelector) ?? []
             const queryStart = performance.now()
             const adaptResult = mutatedPage.css(target.initialSelector, {
               identifier: target.id,
-              adaptive: true,
               percentage: 30,
             })
             const durationMs = Math.round((performance.now() - queryStart) * 100) / 100

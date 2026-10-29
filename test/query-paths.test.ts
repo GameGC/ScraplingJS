@@ -54,11 +54,9 @@ describe('CSS fast path and XPath fallback', () => {
   it('return identical matches whether or not the scope contains shadow content', () => {
     const fastPath = new Selector({
       root: parse(LIGHT_HTML).documentElement,
-      adaptive: false,
     })
     const xpathPath = new Selector({
       root: withShadowFiller(parse(LIGHT_HTML)).documentElement,
-      adaptive: false,
     })
 
     for (const selector of SELECTORS) {
@@ -71,7 +69,6 @@ describe('CSS fast path and XPath fallback', () => {
   it('keeps translator-only selectors working when the fast path cannot run', () => {
     const page = new Selector({
       root: parse(LIGHT_HTML).documentElement,
-      adaptive: false,
     })
 
     expect(matchesOf(page, 'li:contains("Beta")')).toEqual(['li:Beta'])
@@ -90,7 +87,6 @@ describe('CSS fast path and XPath fallback', () => {
   it('scopes element-rooted // expressions and every union branch to the subtree', () => {
     const page = new Selector({
       root: parse(LIGHT_HTML).documentElement,
-      adaptive: false,
     })
     const section = page.css('section')[0]
 
@@ -107,7 +103,6 @@ describe('CSS fast path and XPath fallback', () => {
       root: parse(
         '<html><body><span data-a="x $b y" data-b=" or 1=1 or ">one</span><span data-a="x" data-b=" or 1=1 or ">two</span><span data-b=" or 1=1 or ">three</span></body></html>',
       ).documentElement,
-      adaptive: false,
     })
 
     const result = page.xpath('//span[@data-a=$a and @data-b=$b]', {
@@ -129,11 +124,9 @@ describe('CSS fast path and XPath fallback', () => {
 
     const fast = new Selector({
       root: directDoc.querySelector('#sec') as Element,
-      adaptive: false,
     })
     const slow = new Selector({
       root: slowDoc.querySelector('#sec') as Element,
-      adaptive: false,
     })
 
     expect(fast.css('.outer span').length).toBe(0)
@@ -152,11 +145,9 @@ describe('CSS fast path and XPath fallback', () => {
 
     const fast = new Selector({
       root: directDoc.querySelector('.outer') as Element,
-      adaptive: false,
     })
     const slow = new Selector({
       root: slowDoc.querySelector('.outer') as Element,
-      adaptive: false,
     })
 
     expect(fast.css('.outer span').map((item) => item.text.toString())).toEqual(['Target'])
@@ -175,8 +166,8 @@ describe('CSS fast path and XPath fallback', () => {
     ;(slowDoc.body as Element).append(host)
     host.attachShadow({ mode: 'open' }).innerHTML = '<i>filler</i>'
 
-    const fast = new Selector({ root: directDoc.documentElement, adaptive: false })
-    const slow = new Selector({ root: slowDoc.documentElement, adaptive: false })
+    const fast = new Selector({ root: directDoc.documentElement })
+    const slow = new Selector({ root: slowDoc.documentElement })
 
     for (const selector of [
       '.item:first-of-type',
@@ -196,11 +187,9 @@ describe('CSS fast path and XPath fallback', () => {
   it('includes the scope root itself only when it matches', () => {
     const fastPath = new Selector({
       root: parse(LIGHT_HTML).querySelector('#root') as Element,
-      adaptive: false,
     })
     const xpathPath = new Selector({
       root: withShadowFiller(parse(LIGHT_HTML)).querySelector('#root') as Element,
-      adaptive: false,
     })
 
     expect(

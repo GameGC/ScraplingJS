@@ -5,6 +5,10 @@ export interface ElementHandleLike {
   asElement?(): unknown
 }
 
+export interface PageContentProvider {
+  content(): string | Promise<string>
+}
+
 const HANDLE_METHODS = ['asElement', 'elementHandle', 'dispose', 'remoteObject'] as const
 
 export function isRemoteHandle(value: unknown): boolean {

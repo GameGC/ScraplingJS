@@ -27,14 +27,12 @@ export class Selectors extends Array<Selector> {
     variables?: Record<string, string | number>,
   ): Selectors {
     let identifier = ''
-    let isAdaptive: boolean | undefined
     let isAutoSave = autoSave
     let minPercentage = percentage
     let vars = variables
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
       identifier = identifierOrOptions.identifier ?? ''
-      isAdaptive = identifierOrOptions.adaptive
       isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? false
       minPercentage = identifierOrOptions.percentage ?? 40
       vars = identifierOrOptions.variables ?? variables
@@ -46,7 +44,6 @@ export class Selectors extends Array<Selector> {
       n.xpath(
         selector,
         identifier || selector,
-        isAdaptive,
         isAutoSave,
         minPercentage,
         vars,
@@ -63,14 +60,12 @@ export class Selectors extends Array<Selector> {
     variables?: Record<string, string | number>,
   ): Selectors {
     let identifier = ''
-    let isAdaptive: boolean | undefined
     let isAutoSave = autoSave
     let minPercentage = percentage
     let vars = variables
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
       identifier = identifierOrOptions.identifier ?? ''
-      isAdaptive = identifierOrOptions.adaptive
       isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? false
       minPercentage = identifierOrOptions.percentage ?? 40
       vars = identifierOrOptions.variables ?? variables
@@ -82,7 +77,6 @@ export class Selectors extends Array<Selector> {
       n.css(
         selector,
         identifier || selector,
-        isAdaptive,
         isAutoSave,
         minPercentage,
         vars,

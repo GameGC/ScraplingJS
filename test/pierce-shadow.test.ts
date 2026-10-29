@@ -32,12 +32,12 @@ describe('pierceShadow', () => {
     const fingerprint = StorageTools.elementToDict(shadowButton)
     const root = doc.documentElement
 
-    const blind = new Selector({ root, adaptive: true, pierceShadow: false })
+    const blind = new Selector({ root, pierceShadow: false })
     expect(blind.css('.cta').length).toBe(0)
     expect(blind.relocate(fingerprint, 40).includes(shadowButton)).toBe(false)
     expect(blind.relocate(fingerprint, 90)).toEqual([])
 
-    const piercing = new Selector({ root, adaptive: true })
+    const piercing = new Selector({ root })
     expect(piercing.css('.cta').length).toBe(1)
     const relocated = piercing.relocate(fingerprint, 40)
     expect(relocated.length).toBe(1)
