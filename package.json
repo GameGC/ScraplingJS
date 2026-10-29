@@ -24,8 +24,9 @@
     "dist"
   ],
   "scripts": {
-    "setup": "pnpm build",
+    "prepare": "pnpm build",
     "build": "unbuild",
+    "setup": "pnpm build",
     "dev": "pnpm build --watch",
     "test": "vitest run",
     "test:node": "vitest run --config vitest.node.config.ts",
