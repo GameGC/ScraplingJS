@@ -529,7 +529,7 @@ describe('Adversarial Stress Test: B-1/B-2 Synchronous Runtime Guard', () => {
     })
 
     expect(() => storage.retrieve('promise-resolve')).toThrowError(
-      /Async read predicate returned a Promise for key "example\.com:::promise-resolve" during synchronous retrieve\(\)\. Unhydrated async read predicate detected on synchronous retrieval\. Call "await storage\.hydrate\(\)" or await storage\.hydrate\(\) before querying\./,
+      /Async read predicate returned a Promise for key "example\.com:::promise-resolve" during synchronous retrieve\(\)\. Unhydrated async read predicate detected on synchronous retrieval\. Call "await storage\.hydrate\(\)" before querying\./,
     )
   })
 

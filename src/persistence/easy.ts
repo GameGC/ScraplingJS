@@ -5,7 +5,6 @@ import type {
 } from '../types'
 import type { Selector } from '../parser/selector'
 import type { Selectors } from '../parser/selectors'
-import { htmlToMarkdown } from '../snapshot/sanitizer'
 import {
   type ElementFilter,
   PagePersistenceManager,
@@ -73,7 +72,6 @@ export interface EasyScrapling {
     pollMs?: number,
   ): Promise<R | null>
   isVisible(element: Element | null | undefined): boolean
-  markdown(htmlOrElement: string | Element | null | undefined): string
   remember(element: Element, key?: string): string
   capture(element: Element, key?: string): CapturedElementInfo
   restore(
@@ -264,11 +262,6 @@ export function createScrapling(
 
   fn.isVisible = (element: Element | null | undefined): boolean => {
     return isElementVisible(element)
-  }
-
-  fn.markdown = (htmlOrElement: string | Element | null | undefined): string => {
-    if (!htmlOrElement) return ''
-    return htmlToMarkdown(htmlOrElement)
   }
 
   fn.remember = (element: Element, key?: string): string => {

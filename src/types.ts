@@ -51,7 +51,12 @@ export interface SelectorOptions {
         textValue: string
         parentElement?: Element | null
       }
+  /**
+   * Page URL used to scope adaptive fingerprints. Without it, fingerprints
+   * share the global `default` bucket, so different sites can collide.
+   */
   url?: string
+  /** Alias of `url` used as the adaptive storage domain. */
   adaptiveDomain?: string
   adaptive_domain?: string
   encoding?: string
@@ -68,6 +73,7 @@ export interface SelectorOptions {
 
 export interface AdaptiveQueryOptions {
   identifier?: string
+  /** Persist the matched fingerprint for future relocation. Defaults to `true`. */
   autoSave?: boolean
   auto_save?: boolean
   percentage?: number

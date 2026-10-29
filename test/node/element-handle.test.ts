@@ -68,7 +68,7 @@ describe('Selector.fromHandle', () => {
     expect(page.tag).toBe('div')
     expect(page.css('button.cta').length).toBe(1)
     expect(page.css('button.cta')[0].text.toString()).toBe('Buy')
-    expect(page.attr('id')?.toString()).toBe('card')
+    expect(page.attr('id')).toBe('card')
   })
 
   it('works with the adapter registered globally', async () => {

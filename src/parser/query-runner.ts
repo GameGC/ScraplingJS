@@ -34,7 +34,7 @@ export function resolveCssQuerySettings(
   autoSave: boolean | undefined,
   percentage: number,
   variables: Record<string, string | number> | undefined,
-  defaults: { autoSave: boolean },
+  defaults: { autoSave: boolean } = { autoSave: true },
 ): CssQuerySettings {
   let identifier = ''
   let isAutoSave = autoSave ?? defaults.autoSave
@@ -88,7 +88,7 @@ export function resolveXPathQuerySettings(
   autoSave: boolean | undefined,
   percentage: number,
   variables: Record<string, string | number> | undefined,
-  defaults: { autoSave: boolean },
+  defaults: { autoSave: boolean } = { autoSave: true },
 ): XPathQuerySettings {
   let identifier = ''
   let isAutoSave = autoSave ?? defaults.autoSave

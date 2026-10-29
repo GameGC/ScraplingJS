@@ -67,7 +67,7 @@ describe('DomAdapter on the Node runtime', () => {
       'Beta',
       'Gamma',
     ])
-    expect(page.css('li')[1].attr('data-sku')?.toString()).toBe('SKU-2')
+    expect(page.css('li')[1].attr('data-sku')).toBe('SKU-2')
     expect(page.css('#app')[0].generateCssSelector).toBe('#app')
     expect(String(page.getAllText())).toContain('Apply')
   })

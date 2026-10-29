@@ -7,6 +7,8 @@ export interface ElementHandleLike {
 
 export interface PageContentProvider {
   content(): string | Promise<string>
+  /** Puppeteer/Playwright Page.url(); used to scope adaptive fingerprints. */
+  url?(): string
 }
 
 const HANDLE_METHODS = ['asElement', 'elementHandle', 'dispose', 'remoteObject'] as const

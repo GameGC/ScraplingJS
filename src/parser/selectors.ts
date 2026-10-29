@@ -22,7 +22,7 @@ export class Selectors extends Array<Selector> {
   xpath(
     selector: string,
     identifierOrOptions: string | AdaptiveQueryOptions = '',
-    autoSave = false,
+    autoSave = true,
     percentage = 40,
     variables?: Record<string, string | number>,
   ): Selectors {
@@ -33,7 +33,7 @@ export class Selectors extends Array<Selector> {
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
       identifier = identifierOrOptions.identifier ?? ''
-      isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? false
+      isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? true
       minPercentage = identifierOrOptions.percentage ?? 40
       vars = identifierOrOptions.variables ?? variables
     } else {
@@ -55,7 +55,7 @@ export class Selectors extends Array<Selector> {
   css(
     selector: string,
     identifierOrOptions: string | AdaptiveQueryOptions = '',
-    autoSave = false,
+    autoSave = true,
     percentage = 40,
     variables?: Record<string, string | number>,
   ): Selectors {
@@ -66,7 +66,7 @@ export class Selectors extends Array<Selector> {
 
     if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
       identifier = identifierOrOptions.identifier ?? ''
-      isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? false
+      isAutoSave = identifierOrOptions.autoSave ?? identifierOrOptions.auto_save ?? true
       minPercentage = identifierOrOptions.percentage ?? 40
       vars = identifierOrOptions.variables ?? variables
     } else {

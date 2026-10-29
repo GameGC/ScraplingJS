@@ -95,7 +95,7 @@ export async function runShopStory(page: DemoPage): Promise<void> {
   if (!handle) throw new Error('Fixture changed: the buy button is missing from v1')
   const button = await Selector.fromHandle(handle)
   console.log(
-    `    ${mark(true)} <${button.tag}> "${String(button.text).trim()}" (type="${String(button.attr('type'))}")`,
+    `    ${mark(true)} <${button.tag}> "${String(button.text).trim()}" (type="${button.attr('type') ?? '—'}")`,
   )
 
   console.log('\n\x1b[1m[C] Adaptive relocation after a redesign\x1b[0m')

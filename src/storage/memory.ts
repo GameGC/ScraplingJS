@@ -83,6 +83,10 @@ const globalBuckets = new LruMap<string, LruMap<string, ElementFingerprint>>(MAX
 export interface MemoryStorageOptions {
   storage_file?: string
   storageFile?: string
+  /**
+   * Domain used to namespace fingerprints. When omitted, all instances that
+   * use the same storage file share the `default` domain.
+   */
   url?: string | null
   capacity?: number
   maxCapacity?: number
@@ -229,7 +233,7 @@ export class MemoryStorageSystem extends StorageSystemMixin {
           (result as Promise<unknown>).catch(() => {})
         }
         throw new Error(
-          `Async read predicate returned a Promise for key "${key}" during synchronous retrieve(). Unhydrated async read predicate detected on synchronous retrieval. Call "await storage.hydrate()" or await storage.hydrate() before querying.`,
+          `Async read predicate returned a Promise for key "${key}" during synchronous retrieve(). Unhydrated async read predicate detected on synchronous retrieval. Call "await storage.hydrate()" before querying.`,
         )
       }
 

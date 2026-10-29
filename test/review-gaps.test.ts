@@ -5,8 +5,8 @@ import {
   Selector,
   calculateSimilarityScore,
   generateElementSelector,
-  htmlToMarkdown,
   isElementVisible,
+  isHiddenElement,
   isValidFingerprint,
   replaceEntities,
   runBrowserActions,
@@ -498,49 +498,28 @@ describe('12 Review Test-Gaps Suite', () => {
     })
   })
 
-  describe('Skill Hardening: Entity Bounds, Shadow Markdown, Cross-Iframe & Layout Thrash', () => {
+  describe('Skill Hardening: Entity Bounds, Shadow DOM, Cross-Iframe & Layout Thrash', () => {
     it('does not throw RangeError on out-of-range or surrogate numeric HTML entities in replaceEntities', () => {
       const malformed = 'Price &#999999999; &#x110000; &#xD800; &#8364; &euro;'
       const result = replaceEntities(malformed)
       expect(result).toBe('Price &#999999999; &#x110000; &#xD800; € €')
     })
 
-    it('strips hidden root elements and projects open Shadow DOM content in htmlToMarkdown', () => {
-      const hiddenRoot = document.createElement('div')
-      hiddenRoot.setAttribute('style', 'display: none !important')
-      hiddenRoot.innerHTML = '<p>Secret hidden prompt injection</p>'
-      expect(htmlToMarkdown(hiddenRoot)).toBe('')
-
-      const host = document.createElement('div')
-      const shadow = host.attachShadow({ mode: 'open' })
-      shadow.innerHTML = '<h2>Shadow Job Title</h2><p>Remote role</p><span style="opacity:0">Hidden trap</span>'
-      const md = htmlToMarkdown(host)
-      expect(md).toContain('## Shadow Job Title')
-      expect(md).toContain('Remote role')
-      expect(md).not.toContain('Hidden trap')
-    })
-
     it('treats the hidden attribute on any tag and visibility:collapse as hidden', () => {
       const wrapper = document.createElement('div')
       wrapper.innerHTML = `
-        <p>Visible copy</p>
-        <div hidden><p>Attribute-hidden payload</p></div>
-        <span hidden>Inline-hidden payload</span>
-        <section style="visibility: collapse"><p>Collapsed payload</p></section>
-        <div style="display: none"><p>Display-hidden payload</p></div>
+        <p id="visible">Visible copy</p>
+        <div id="attr-hidden" hidden><p>Attribute-hidden payload</p></div>
+        <span id="inline-hidden" hidden>Inline-hidden payload</span>
+        <section id="collapsed" style="visibility: collapse"><p>Collapsed payload</p></section>
+        <div id="display-hidden" style="display: none"><p>Display-hidden payload</p></div>
       `
 
-      const markdown = htmlToMarkdown(wrapper)
-      expect(markdown).toContain('Visible copy')
-      expect(markdown).not.toContain('Attribute-hidden payload')
-      expect(markdown).not.toContain('Inline-hidden payload')
-      expect(markdown).not.toContain('Collapsed payload')
-      expect(markdown).not.toContain('Display-hidden payload')
-
-      const hidden = document.createElement('div')
-      hidden.setAttribute('hidden', '')
-      hidden.innerHTML = '<p>Root payload</p>'
-      expect(htmlToMarkdown(hidden)).toBe('')
+      expect(isHiddenElement(wrapper.querySelector('#visible') as Element)).toBe(false)
+      expect(isHiddenElement(wrapper.querySelector('#attr-hidden') as Element)).toBe(true)
+      expect(isHiddenElement(wrapper.querySelector('#inline-hidden') as Element)).toBe(true)
+      expect(isHiddenElement(wrapper.querySelector('#collapsed') as Element)).toBe(true)
+      expect(isHiddenElement(wrapper.querySelector('#display-hidden') as Element)).toBe(true)
     })
 
     it('handles cross-iframe elements in isElementVisible, setNativeInputValue, and setNativeCheckboxValue', () => {

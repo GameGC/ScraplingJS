@@ -135,10 +135,9 @@ export function loadSelectorRoot(
     return { wrapper: rootArg as InternalNodeWrapper, rawBody: '' }
   }
   if (adapter.isDocument(rootArg)) {
-    if (!keepComments) {
-      removeCommentsFromNode(rootArg)
-      normalizeTextNodes(rootArg)
-    }
+    // Never mutate a caller-owned document: wrapping it must be a read-only
+    // operation. Comment stripping/normalization only applies to documents we
+    // parsed ourselves from a string above.
     return {
       wrapper: { kind: 'element', element: rootArg.documentElement },
       rawBody: '',

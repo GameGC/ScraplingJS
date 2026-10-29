@@ -236,10 +236,22 @@ export class Selector {
   ): Promise<Selector> {
     if (!page || typeof page.content !== 'function') {
       throw new TypeError(
-        'Selector.fromPage() expects a Puppeteer or Playwright Page: an object with a content() method.',
+        'Selector.fromPage() expects a Puppeteer or Playwright Page: an object with a content() method (and usually url()).',
       )
     }
-    return new Selector({ ...options, content: await page.content() })
+    // Read the live page URL so fingerprints land in the site's domain bucket
+    // instead of the shared `default` one.
+    let pageUrl = ''
+    if (typeof page.url === 'function') {
+      try {
+        pageUrl = page.url()
+      } catch {}
+    }
+    return new Selector({
+      ...options,
+      content: await page.content(),
+      url: options?.url ?? pageUrl,
+    })
   }
 
   static async fromHandle(
@@ -345,11 +357,19 @@ export class Selector {
     return this._attributesCache
   }
 
-  attr(name: string): TextHandler | undefined {
+  /**
+   * Returns an attribute value as a primitive string, or `null` when absent.
+   *
+   * Prefer this over dot access (`selector.href`) for attributes whose names
+   * collide with `Selector` members (`url`, `text`, `tag`, `parent`, `body`, ...):
+   * dot access always resolves the class member first.
+   */
+  attr(name: string): string | null {
     if (this._wrapper.kind === 'text') {
       throw new TypeError('Text nodes do not have attributes')
     }
-    return this.attrib.get(name, undefined)
+    const value = this.attrib.get(name, undefined)
+    return value == null ? null : value.toString()
   }
 
   get htmlContent(): TextHandler {

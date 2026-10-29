@@ -495,14 +495,18 @@ export class PagePersistenceManager {
     }
 
     const evaluateNow = () => {
-      if (currentElement && isDeepConnected(this.doc.documentElement, currentElement)) {
-        const directMatches = directMatchesInScope()
-        if (directMatches.length > 0 && directMatches[0].rawNode === currentElement) {
-          return
-        }
-      }
-
+      // Resolve the selector once per mutation tick; the previous shape ran the
+      // same query twice when the tracked element was still connected.
       const direct = directMatchesInScope()
+
+      if (
+        currentElement &&
+        isDeepConnected(this.doc.documentElement, currentElement) &&
+        direct.length > 0 &&
+        direct[0].rawNode === currentElement
+      ) {
+        return
+      }
 
       if (direct.length > 0 && direct[0].rawNode) {
         const foundEl = direct[0].rawNode

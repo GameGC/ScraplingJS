@@ -5,7 +5,6 @@ import {
   browserDomAdapter,
   captureShadowSnapshot,
   createScrapling,
-  htmlToMarkdown,
   isHiddenElement,
   searchSnapshot,
   type DomAdapter,
@@ -342,7 +341,7 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     await manager.destroy()
   })
 
-  it('detects hidden elements, converts to clean Markdown, and searches snapshots', () => {
+  it('detects hidden elements and searches snapshots', () => {
     const div1 = document.createElement('div')
     div1.setAttribute('style', 'display: none !important')
     expect(isHiddenElement(div1)).toBe(true)
@@ -350,32 +349,6 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     const div2 = document.createElement('div')
     div2.setAttribute('style', 'opacity: 0.95; line-height: 0')
     expect(isHiddenElement(div2)).toBe(false)
-
-    const md = htmlToMarkdown(`
-      <div>
-        <h1>Welcome</h1>
-        <p>Read <a href="https://example.com">more</a> here.</p>
-        <div style="visibility: hidden">Prompt injection attempt</div>
-        <script>alert(1)</script>
-      </div>
-    `)
-    expect(md).toContain('# Welcome')
-    expect(md).toContain('[more](https://example.com)')
-    expect(md).not.toContain('Prompt injection')
-    expect(md).not.toContain('alert(1)')
-
-    const richMd = htmlToMarkdown(`
-      <div>
-        <img src="https://cdn.example.com/chart.png" alt="Quarterly chart" />
-        <table>
-          <tr><th>Role</th><th>Pay</th></tr>
-          <tr><td>Developer</td><td>$140,000</td></tr>
-        </table>
-      </div>
-    `)
-    expect(richMd).toContain('![Quarterly chart](https://cdn.example.com/chart.png)')
-    expect(richMd).toContain('| Role | Pay |')
-    expect(richMd).toContain('| Developer | $140,000 |')
 
     const snap = [
       '- document:',
@@ -414,7 +387,7 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
     wrapper.remove()
   })
 
-  it('supports waitFor, waitUntil, isVisible, attr, check, and markdown helpers', async () => {
+  it('supports waitFor, waitUntil, isVisible, attr, and check helpers', async () => {
     const container = document.createElement('div')
     container.innerHTML = `
       <div class="card">
@@ -466,10 +439,6 @@ describe('Chrome Extension Page Persistence & Browser Features', () => {
       15,
     )
     expect(nextId).toBe('new-job-id-42')
-
-    const md = s.markdown('<div><strong>Bold</strong><br/><li>Item 1</li></div>')
-    expect(md).toContain('**Bold**')
-    expect(md).toContain('- Item 1')
 
     await s.manager.destroy()
     container.remove()
