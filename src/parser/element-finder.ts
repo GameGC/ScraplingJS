@@ -1,17 +1,30 @@
 import type {
   FindByRegexOptions,
   FindByTextOptions,
+  FindPredicate,
   FindSimilarOptions,
 } from '../types'
-import type { DomAdapter } from '../core/dom-adapter'
-import { TextHandler } from '../core/text-handler'
+import { resolveDomAdapter, type DomAdapter } from '../core/dom-adapter'
 import { areElementsAlike, filterAttributes } from '../core/similarity'
 import { getElementDirectText } from '../core/storage-tools'
 import {
   collectDeepElements,
+  collectQueryContextRoots,
   getDeepParentElement,
 } from '../core/shadow-dom'
-import { escapeCssString } from '../core/text-utils'
+import { cleanText, escapeCssString } from '../core/text-utils'
+import {
+  cssToXpath,
+  extractTypePositionFilters,
+  splitCssSelectors,
+} from '../core/translator'
+import { matchRegex, unwrapRootElement, type RootTarget } from './dom-traversal'
+import type { InternalNodeWrapper } from './html-loader'
+import {
+  filterByTypePosition,
+  runXPathQuery,
+  tryNativeCssQuery,
+} from './query-runner'
 
 const WHITELISTED_ATTRS: Record<string, string> = {
   class_: 'class',
@@ -21,7 +34,7 @@ const WHITELISTED_ATTRS: Record<string, string> = {
 export interface FindAllArguments {
   selectors: string[]
   patterns: RegExp[]
-  functions: Array<(element: unknown) => boolean>
+  functions: Array<(element: Element) => boolean>
 }
 
 export function parseFindAllArguments(args: unknown[]): FindAllArguments {
@@ -34,7 +47,7 @@ export function parseFindAllArguments(args: unknown[]): FindAllArguments {
   const attributes: Record<string, string> = {}
   const tags = new Set<string>()
   const patterns: RegExp[] = []
-  const functions: Array<(element: unknown) => boolean> = []
+  const functions: Array<(element: Element) => boolean> = []
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -42,18 +55,18 @@ export function parseFindAllArguments(args: unknown[]): FindAllArguments {
       tags.add(arg)
     } else if (Array.isArray(arg) || arg instanceof Set) {
       const arr = Array.from(arg)
-      if (!arr.every((x) => typeof x === 'string')) {
+      if (!arr.every((x): x is string => typeof x === 'string')) {
         throw new TypeError(
           'Nested Iterables are not accepted, only iterables of tag names are accepted',
         )
       }
       for (const t of arr) {
-        tags.add(t as string)
+        tags.add(t)
       }
     } else if (arg instanceof RegExp) {
       patterns.push(arg)
     } else if (typeof arg === 'function') {
-      functions.push(arg as (element: unknown) => boolean)
+      functions.push(arg as (element: Element) => boolean)
     } else if (arg && typeof arg === 'object') {
       const entries = Object.entries(arg)
       if (!entries.every(([k, v]) => typeof k === 'string' && typeof v === 'string')) {
@@ -103,38 +116,142 @@ export function parseFindAllArguments(args: unknown[]): FindAllArguments {
   return { selectors, patterns, functions }
 }
 
+function unwrapNodes(items: readonly (Element | InternalNodeWrapper)[]): Element[] {
+  const out: Element[] = []
+  const seen = new Set<Element>()
+  for (const item of items) {
+    const el =
+      'kind' in item
+        ? item.kind === 'element'
+          ? item.element
+          : item.parentElement
+        : item
+    if (el && !seen.has(el)) {
+      seen.add(el)
+      out.push(el)
+    }
+  }
+  return out
+}
+
+function queryCssStatic(
+  root: Element,
+  selector: string,
+  pierceShadow = true,
+  adapter?: DomAdapter,
+): Element[] {
+  const dom = resolveDomAdapter(adapter)
+  const contextRoots = collectQueryContextRoots(root, pierceShadow)
+  const branches = selector.includes(',') ? splitCssSelectors(selector) : [selector]
+  const combined: Element[] = []
+  const seen = new Set<Element>()
+
+  for (const branch of branches) {
+    const typePos = extractTypePositionFilters(branch)
+    const executable = typePos ? typePos.selector : branch
+    const xpathExpr = cssToXpath(executable)
+    const nativeHits = tryNativeCssQuery(root, executable, contextRoots)
+    const rawHits = nativeHits
+      ? typePos
+        ? filterByTypePosition(nativeHits, typePos.filters, typePos.nativeVerifySelector)
+        : nativeHits
+      : (() => {
+          const xpHits = runXPathQuery(
+            root,
+            xpathExpr,
+            pierceShadow,
+            executable,
+            dom,
+            contextRoots,
+          )
+          return typePos
+            ? filterByTypePosition(xpHits, typePos.filters, typePos.nativeVerifySelector)
+            : xpHits
+        })()
+
+    for (const el of unwrapNodes(rawHits)) {
+      if (!seen.has(el)) {
+        seen.add(el)
+        combined.push(el)
+      }
+    }
+  }
+  return combined
+}
+
+export function findAllPredicates<T extends Element = Element>(
+  target: RootTarget,
+  ...args: FindPredicate[]
+): T[] {
+  const root = unwrapRootElement(target)
+  const { selectors, patterns, functions } = parseFindAllArguments(args)
+
+  let results: Element[] =
+    selectors.length > 0
+      ? queryCssStatic(root, selectors.join(', '), true)
+      : collectDeepElements(root, true, false)
+
+  if (results.length > 0) {
+    for (const pattern of patterns) {
+      results = results.filter((el) =>
+        matchRegex(getElementDirectText(el), pattern, {
+          cleanMatch: false,
+          caseSensitive: !pattern.ignoreCase,
+        }),
+      )
+    }
+    for (const fn of functions) {
+      results = results.filter((el) => Boolean(fn(el)))
+    }
+  }
+
+  return results as T[]
+}
+
+export function findPredicates<T extends Element = Element>(
+  target: RootTarget,
+  ...args: FindPredicate[]
+): T | null {
+  const all = findAllPredicates<T>(target, ...args)
+  return all.length > 0 ? all[0] : null
+}
+
+function countAncestors(element: Element): number {
+  let depth = 0
+  let current = getDeepParentElement(element)
+  while (current) {
+    depth++
+    current = getDeepParentElement(current)
+  }
+  return depth
+}
+
 export function findSimilarElements(
   rootEl: Element,
-  similarityThresholdOrOptions: number | FindSimilarOptions,
-  ignoreAttributes: readonly string[],
-  matchText: boolean,
-  adapter: DomAdapter,
+  similarityThresholdOrOptions: number | FindSimilarOptions = 0.2,
+  ignoreAttributes: readonly string[] = ['href', 'src'],
+  matchText = false,
+  adapter?: DomAdapter,
 ): Element[] {
-  let threshold = 0.2
-  let ignoredAttrs: readonly string[] = ['href', 'src']
-  let shouldMatchText = false
-
-  if (
+  const dom = resolveDomAdapter(adapter)
+  const isOptions =
     typeof similarityThresholdOrOptions === 'object' &&
     similarityThresholdOrOptions !== null
-  ) {
-    threshold =
-      similarityThresholdOrOptions.similarityThreshold ??
+  const threshold = isOptions
+    ? (similarityThresholdOrOptions.similarityThreshold ??
       similarityThresholdOrOptions.similarity_threshold ??
-      0.2
-    ignoredAttrs =
-      similarityThresholdOrOptions.ignoreAttributes ??
+      0.2)
+    : similarityThresholdOrOptions
+  const ignoredAttrs = isOptions
+    ? (similarityThresholdOrOptions.ignoreAttributes ??
       similarityThresholdOrOptions.ignore_attributes ??
-      ['href', 'src']
-    shouldMatchText =
-      similarityThresholdOrOptions.matchText ??
+      ['href', 'src'])
+    : ignoreAttributes
+  const shouldMatchText = isOptions
+    ? (similarityThresholdOrOptions.matchText ??
       similarityThresholdOrOptions.match_text ??
-      false
-  } else {
-    threshold = similarityThresholdOrOptions
-    ignoredAttrs = ignoreAttributes
-    shouldMatchText = matchText
-  }
+      false)
+    : matchText
 
   const currentDepth = countAncestors(rootEl)
   const targetAttrs = filterAttributes(rootEl, ignoredAttrs)
@@ -151,12 +268,13 @@ export function findSimilarElements(
 
   const similarElements: Element[] = []
   const seen = new Set<Element>()
-  const rootNode = typeof rootEl.getRootNode === 'function' ? rootEl.getRootNode() : null
+  const rootNode =
+    typeof rootEl.getRootNode === 'function' ? rootEl.getRootNode() : undefined
   const inShadow = Boolean(rootNode && (rootNode as ShadowRoot).host)
 
   if (!inShadow) {
     const xpathPath = `//${pathParts.join('/')}[count(ancestor::*) = ${currentDepth}]`
-    const snapshot = adapter.evaluateXPath(xpathPath, rootEl)
+    const snapshot = dom.evaluateXPath(xpathPath, rootEl)
     for (let i = 0; i < snapshot.snapshotLength; i++) {
       const candidate = snapshot.snapshotItem(i) as Element | null
       if (
@@ -184,11 +302,12 @@ export function findSimilarElements(
       topAncestor = currParent
       currParent = getDeepParentElement(topAncestor)
     }
-    const searchRoot = topAncestor
-    const allCandidates = collectDeepElements(searchRoot, true, true)
+    const allCandidates = collectDeepElements(topAncestor, true, true)
     const targetTag = pathParts[pathParts.length - 1]
-    const expectedParentTag = pathParts.length >= 2 ? pathParts[pathParts.length - 2] : null
-    const expectedGrandTag = pathParts.length >= 3 ? pathParts[pathParts.length - 3] : null
+    const expectedParentTag =
+      pathParts.length >= 2 ? pathParts[pathParts.length - 2] : undefined
+    const expectedGrandTag =
+      pathParts.length >= 3 ? pathParts[pathParts.length - 3] : undefined
 
     for (const candidate of allCandidates) {
       if (candidate === rootEl || seen.has(candidate)) continue
@@ -199,7 +318,7 @@ export function findSimilarElements(
         continue
       }
       if (expectedGrandTag) {
-        const candGrand = candParent ? getDeepParentElement(candParent) : null
+        const candGrand = candParent ? getDeepParentElement(candParent) : undefined
         if (candGrand?.tagName.toLowerCase() !== expectedGrandTag) continue
       }
       if (
@@ -221,14 +340,20 @@ export function findSimilarElements(
   return similarElements
 }
 
-function countAncestors(element: Element): number {
-  let depth = 0
-  let current = getDeepParentElement(element)
-  while (current) {
-    depth++
-    current = getDeepParentElement(current)
-  }
-  return depth
+export function findSimilar<T extends Element = Element>(
+  element: Element,
+  similarityThresholdOrOptions: number | FindSimilarOptions = 0.2,
+  ignoreAttributes: readonly string[] = ['href', 'src'],
+  matchText = false,
+  adapter?: DomAdapter,
+): T[] {
+  return findSimilarElements(
+    element,
+    similarityThresholdOrOptions,
+    ignoreAttributes,
+    matchText,
+    adapter,
+  ) as T[]
 }
 
 export function findElementsByText(
@@ -240,21 +365,20 @@ export function findElementsByText(
   caseSensitive = false,
   cleanMatch = true,
 ): Element[] {
-  let firstMatch = true
-  let isPartial = partial
-  let isCaseSensitive = caseSensitive
-  let isCleanMatch = cleanMatch
-
-  if (typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null) {
-    firstMatch = firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true
-    isPartial = firstMatchOrOptions.partial ?? false
-    isCaseSensitive =
-      firstMatchOrOptions.caseSensitive ?? firstMatchOrOptions.case_sensitive ?? false
-    isCleanMatch =
-      firstMatchOrOptions.cleanMatch ?? firstMatchOrOptions.clean_match ?? true
-  } else {
-    firstMatch = firstMatchOrOptions
-  }
+  const isOptions =
+    typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null
+  const firstMatch = isOptions
+    ? (firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true)
+    : firstMatchOrOptions
+  const isPartial = isOptions ? (firstMatchOrOptions.partial ?? false) : partial
+  const isCaseSensitive = isOptions
+    ? (firstMatchOrOptions.caseSensitive ??
+      firstMatchOrOptions.case_sensitive ??
+      false)
+    : caseSensitive
+  const isCleanMatch = isOptions
+    ? (firstMatchOrOptions.cleanMatch ?? firstMatchOrOptions.clean_match ?? true)
+    : cleanMatch
 
   const queryText = isCaseSensitive ? text : text.toLowerCase()
   const results: Element[] = []
@@ -265,10 +389,7 @@ export function findElementsByText(
     const directText = getElementDirectText(el)
     if (!directText || !directText.trim()) continue
 
-    let nodeText = new TextHandler(directText).toString()
-    if (isCleanMatch) {
-      nodeText = new TextHandler(directText).clean().toString()
-    }
+    let nodeText = isCleanMatch ? cleanText(directText) : directText
     if (!isCaseSensitive) {
       nodeText = nodeText.toLowerCase()
     }
@@ -284,6 +405,60 @@ export function findElementsByText(
   return results
 }
 
+export function findByText<T extends Element = Element>(
+  target: RootTarget,
+  text: string,
+  firstMatchOrOptions?: true | (FindByTextOptions & { firstMatch?: true; first_match?: true }),
+  partial?: boolean,
+  caseSensitive?: boolean,
+  cleanMatch?: boolean,
+): T | null
+export function findByText<T extends Element = Element>(
+  target: RootTarget,
+  text: string,
+  firstMatchOrOptions: false | (FindByTextOptions & { firstMatch: false }) | (FindByTextOptions & { first_match: false }),
+  partial?: boolean,
+  caseSensitive?: boolean,
+  cleanMatch?: boolean,
+): T[]
+export function findByText<T extends Element = Element>(
+  target: RootTarget,
+  text: string,
+  firstMatchOrOptions: boolean | FindByTextOptions = true,
+  partial = false,
+  caseSensitive = false,
+  cleanMatch = true,
+): T | T[] | null {
+  const root = unwrapRootElement(target)
+  const isOptions =
+    typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null
+  const pierceShadow = isOptions ? (firstMatchOrOptions.pierceShadow ?? true) : true
+  const firstMatch = isOptions
+    ? (firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true)
+    : firstMatchOrOptions
+  const results = findElementsByText(
+    root,
+    pierceShadow,
+    text,
+    firstMatchOrOptions,
+    partial,
+    caseSensitive,
+    cleanMatch,
+  ) as T[]
+  if (firstMatch) {
+    return results.length > 0 ? results[0] : null
+  }
+  return results
+}
+
+export function findAllByText<T extends Element = Element>(
+  target: RootTarget,
+  text: string,
+  options: Omit<FindByTextOptions, 'firstMatch' | 'first_match'> = {},
+): T[] {
+  return findByText<T>(target, text, { ...options, firstMatch: false })
+}
+
 export function findElementsByRegex(
   rootEl: Element,
   pierceShadow: boolean,
@@ -292,19 +467,19 @@ export function findElementsByRegex(
   caseSensitive = false,
   cleanMatch = true,
 ): Element[] {
-  let firstMatch = true
-  let isCaseSensitive = caseSensitive
-  let isCleanMatch = cleanMatch
-
-  if (typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null) {
-    firstMatch = firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true
-    isCaseSensitive =
-      firstMatchOrOptions.caseSensitive ?? firstMatchOrOptions.case_sensitive ?? false
-    isCleanMatch =
-      firstMatchOrOptions.cleanMatch ?? firstMatchOrOptions.clean_match ?? true
-  } else {
-    firstMatch = firstMatchOrOptions
-  }
+  const isOptions =
+    typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null
+  const firstMatch = isOptions
+    ? (firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true)
+    : firstMatchOrOptions
+  const isCaseSensitive = isOptions
+    ? (firstMatchOrOptions.caseSensitive ??
+      firstMatchOrOptions.case_sensitive ??
+      false)
+    : caseSensitive
+  const isCleanMatch = isOptions
+    ? (firstMatchOrOptions.cleanMatch ?? firstMatchOrOptions.clean_match ?? true)
+    : cleanMatch
 
   const results: Element[] = []
   const descendants = collectDeepElements(rootEl, pierceShadow, false)
@@ -314,8 +489,7 @@ export function findElementsByRegex(
     const directText = getElementDirectText(el)
     if (!directText || !directText.trim()) continue
 
-    const matched = new TextHandler(directText).re(query, {
-      checkMatch: true,
+    const matched = matchRegex(directText, query, {
       cleanMatch: isCleanMatch,
       caseSensitive: isCaseSensitive,
     })
@@ -328,4 +502,54 @@ export function findElementsByRegex(
   }
 
   return results
+}
+
+export function findByRegex<T extends Element = Element>(
+  target: RootTarget,
+  query: string | RegExp,
+  firstMatchOrOptions?: true | (FindByRegexOptions & { firstMatch?: true; first_match?: true }),
+  caseSensitive?: boolean,
+  cleanMatch?: boolean,
+): T | null
+export function findByRegex<T extends Element = Element>(
+  target: RootTarget,
+  query: string | RegExp,
+  firstMatchOrOptions: false | (FindByRegexOptions & { firstMatch: false }) | (FindByRegexOptions & { first_match: false }),
+  caseSensitive?: boolean,
+  cleanMatch?: boolean,
+): T[]
+export function findByRegex<T extends Element = Element>(
+  target: RootTarget,
+  query: string | RegExp,
+  firstMatchOrOptions: boolean | FindByRegexOptions = true,
+  caseSensitive = false,
+  cleanMatch = true,
+): T | T[] | null {
+  const root = unwrapRootElement(target)
+  const isOptions =
+    typeof firstMatchOrOptions === 'object' && firstMatchOrOptions !== null
+  const pierceShadow = isOptions ? (firstMatchOrOptions.pierceShadow ?? true) : true
+  const firstMatch = isOptions
+    ? (firstMatchOrOptions.firstMatch ?? firstMatchOrOptions.first_match ?? true)
+    : firstMatchOrOptions
+  const results = findElementsByRegex(
+    root,
+    pierceShadow,
+    query,
+    firstMatchOrOptions,
+    caseSensitive,
+    cleanMatch,
+  ) as T[]
+  if (firstMatch) {
+    return results.length > 0 ? results[0] : null
+  }
+  return results
+}
+
+export function findAllByRegex<T extends Element = Element>(
+  target: RootTarget,
+  query: string | RegExp,
+  options: Omit<FindByRegexOptions, 'firstMatch' | 'first_match'> = {},
+): T[] {
+  return findByRegex<T>(target, query, { ...options, firstMatch: false })
 }

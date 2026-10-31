@@ -1,7 +1,5 @@
 import { DomAdapterError } from './errors'
 
-export { DomAdapterError, ElementHandleError } from './errors'
-
 export interface XPathNodeSnapshot {
   readonly snapshotLength: number
   snapshotItem(index: number): Node | null
@@ -23,7 +21,7 @@ export interface DomAdapter {
   evaluateXPath(
     expression: string,
     contextNode: Node,
-    namespaces?: Record<string, string> | null,
+    namespaces?: Record<string, string>,
   ): XPathNodeSnapshot
   isElement(node: unknown): node is Element
   isDocument(node: unknown): node is Document
@@ -39,10 +37,7 @@ function nodeTypeOf(node: unknown): number {
 }
 
 function ownerDocumentOf(node: Node): Document | null {
-  if (nodeTypeOf(node) === 9) {
-    return node as Document
-  }
-  return (node as { ownerDocument?: Document | null }).ownerDocument ?? null
+  return node.nodeType === 9 ? (node as Document) : node.ownerDocument
 }
 
 const ADAPTER_HINT =
@@ -61,7 +56,7 @@ export const browserDomAdapter: DomAdapter = {
   evaluateXPath(
     expression: string,
     contextNode: Node,
-    namespaces?: Record<string, string> | null,
+    namespaces?: Record<string, string>,
   ): XPathNodeSnapshot {
     const doc = ownerDocumentOf(contextNode)
     if (!doc || typeof doc.evaluate !== 'function') {
@@ -103,35 +98,35 @@ export const browserDomAdapter: DomAdapter = {
   },
 }
 
-let registeredAdapter: DomAdapter | null = null
+let registeredAdapter: DomAdapter | undefined
 
-export function setDomAdapter(adapter: DomAdapter | null): void {
-  registeredAdapter = adapter
+export function setDomAdapter(adapter?: DomAdapter | null): void {
+  registeredAdapter = adapter ?? undefined
 }
 
 export function getDomAdapter(): DomAdapter {
   return registeredAdapter ?? browserDomAdapter
 }
 
-export function resolveDomAdapter(adapter?: DomAdapter | null): DomAdapter {
+export function resolveDomAdapter(adapter?: DomAdapter): DomAdapter {
   return adapter ?? getDomAdapter()
 }
 
 export function tryCreateDomObserver(
-  adapter: DomAdapter | null | undefined,
+  adapter: DomAdapter | undefined,
   callback: (records: MutationRecord[]) => void,
-): MutationObserverLike | null {
-  if (adapter && typeof adapter.createObserver === 'function') {
+): MutationObserverLike | undefined {
+  if (adapter?.createObserver) {
     return adapter.createObserver(callback)
   }
   if (typeof MutationObserver !== 'undefined') {
     return new MutationObserver(callback)
   }
-  return null
+  return undefined
 }
 
 export function createDomObserver(
-  adapter: DomAdapter | null | undefined,
+  adapter: DomAdapter | undefined,
   callback: (records: MutationRecord[]) => void,
 ): MutationObserverLike {
   const observer = tryCreateDomObserver(adapter, callback)

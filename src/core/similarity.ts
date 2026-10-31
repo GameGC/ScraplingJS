@@ -1,16 +1,13 @@
 import type { ElementFingerprint } from '../types'
-import { isElementNode } from './dom-utils'
 import { calculateDictDiff, sequenceRatio } from './sequence-matcher'
 import { StorageTools, getElementDirectText } from './storage-tools'
 import { cleanSpaces } from './text-utils'
 
-export { SequenceMatcher, calculateDictDiff, sequenceRatio } from './sequence-matcher'
+export function isElementNode(value: unknown): value is Element {
+  return Boolean(value) && typeof value === 'object' && (value as Node).nodeType === 1
+}
 
-const NOISE_TOKENS = new Set([
-  'css',
-  'true',
-  'false',
-])
+const NOISE_TOKENS = new Set(['css', 'true', 'false'])
 
 const ACTIVE_CLASS_TOKENS = new Set([
   'active',
@@ -35,16 +32,15 @@ function extractTokensFromText(raw: string): string[] {
     .toLowerCase()
     .replace(/(\d),000\b/g, '$1k')
     .replace(/(\d+)k\b/g, '$1')
-  const matches = lower.match(/[a-z]+|\d+/g)
-  return matches ? matches : []
+  return lower.match(/[a-z]+|\d+/g) ?? []
 }
 
 function extractSemanticTokens(
   fp: ElementFingerprint,
-  ignored: ReadonlySet<string> | null = null,
+  ignored?: ReadonlySet<string>,
 ): Set<string> {
   const out = new Set<string>()
-  const addFrom = (val: string | undefined | null, minLength = 3) => {
+  const addFrom = (val?: string | null, minLength = 3) => {
     if (!val) return
     for (const rawTok of extractTokensFromText(val)) {
       if (rawTok.length < minLength) continue
@@ -132,7 +128,7 @@ export function prepareFingerprint(
   const cached = perObjectCache?.get(cacheKey)
   if (cached) return cached
 
-  const ignored = ignoreAttributes.length > 0 ? new Set(ignoreAttributes) : null
+  const ignored = ignoreAttributes.length > 0 ? new Set(ignoreAttributes) : undefined
   const text = (original.text ?? original.all_text ?? '').trim()
   const words = text ? extractTokensFromText(text) : []
   const prepared: PreparedFingerprint = {
@@ -179,10 +175,8 @@ function computeTagSimilarity(
   const origRole = original.attributes?.role
   const candRole = data.attributes?.role
 
-  const origIsButtonLike =
-    original.tag === 'button' || origRole === 'button'
-  const candIsButtonLike =
-    data.tag === 'button' || candRole === 'button'
+  const origIsButtonLike = original.tag === 'button' || origRole === 'button'
+  const candIsButtonLike = data.tag === 'button' || candRole === 'button'
 
   if (origIsButtonLike && candIsButtonLike) {
     return 0.8
@@ -207,14 +201,10 @@ function computeTagSimilarity(
 
 function withoutIgnored(
   attributes: Record<string, string> | undefined,
-  ignored: ReadonlySet<string> | null,
+  ignored?: ReadonlySet<string>,
 ): Record<string, string> {
-  if (!attributes) {
-    return {}
-  }
-  if (!ignored || ignored.size === 0) {
-    return attributes
-  }
+  if (!attributes) return {}
+  if (!ignored || ignored.size === 0) return attributes
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(attributes)) {
     if (!ignored.has(key)) {
@@ -232,10 +222,10 @@ export function calculateSimilarityScore(
 ): number {
   let score = 0
   let checks = 0
-  const ignored = ignoreAttributes.length > 0 ? new Set(ignoreAttributes) : null
+  const ignored = ignoreAttributes.length > 0 ? new Set(ignoreAttributes) : undefined
   const data = isElementNode(candidate)
     ? StorageTools.elementToDict(candidate, false)
-    : (candidate as ElementFingerprint)
+    : candidate
 
   const preparedOrig = prepared ?? prepareFingerprint(original, ignoreAttributes)
   const origTokens = preparedOrig.tokens
@@ -269,9 +259,7 @@ export function calculateSimilarityScore(
   checks += 1
 
   for (const attrib of ['class', 'id', 'href', 'src'] as const) {
-    if (ignored?.has(attrib)) {
-      continue
-    }
+    if (ignored?.has(attrib)) continue
     const origVal = original.attributes?.[attrib]
     if (origVal) {
       const candVal = data.attributes?.[attrib]
@@ -393,10 +381,7 @@ export function areElementsAlike(
   similarityThreshold: number,
   matchText = false,
 ): boolean {
-  const candidateAttributes =
-    ignoreAttributes.length > 0
-      ? filterAttributes(candidate, ignoreAttributes)
-      : filterAttributes(candidate, [])
+  const candidateAttributes = filterAttributes(candidate, ignoreAttributes)
 
   let score = 0
   let checks = 0
@@ -409,11 +394,9 @@ export function areElementsAlike(
       score += sequenceRatio(v, candidateAttributes[k] ?? '')
     }
     checks += Math.max(origEntries.length, candCount)
-  } else {
-    if (candCount === 0) {
-      score += 1
-      checks += 1
-    }
+  } else if (candCount === 0) {
+    score += 1
+    checks += 1
   }
 
   if (matchText) {

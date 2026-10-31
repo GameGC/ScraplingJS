@@ -37,12 +37,7 @@ const decodedEntityCache = new Map<string, string>()
 // Bounded: hostile pages can carry unbounded numbers of unique entity-like
 // tokens, and every decoded hit used to live in this Map forever.
 const DECODED_ENTITY_CACHE_LIMIT = 1024
-let entityDecoder: HTMLTextAreaElement | null = null
-
-/** Test-only: exposes the internal entity cache size for assertions. */
-export function __decodedEntityCacheSizeForTests(): number {
-  return decodedEntityCache.size
-}
+let entityDecoder: HTMLTextAreaElement | undefined
 
 export function replaceEntities(input: string): string {
   if (!input || !input.includes('&')) {
@@ -162,11 +157,11 @@ function isIpLiteral(hostname: string): boolean {
   return parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
 }
 
-export function extractBaseDomain(url?: string | null, defaultValue = 'default'): string {
-  if (!url || typeof url !== 'string' || !url.trim()) {
+export function extractBaseDomain(url?: string, defaultValue = 'default'): string {
+  const normalized = url?.trim().toLowerCase()
+  if (!normalized) {
     return defaultValue
   }
-  const normalized = url.trim().toLowerCase()
   const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//.test(normalized) ? normalized : `http://${normalized}`
   try {
     const parsed = new URL(withProtocol)

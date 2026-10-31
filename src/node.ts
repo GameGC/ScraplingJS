@@ -1,6 +1,10 @@
 import { parseHTML } from 'linkedom'
 import xpathPackage from 'xpath'
-import type { DomAdapter, XPathNodeSnapshot } from './core/dom-adapter'
+import {
+  browserDomAdapter,
+  type DomAdapter,
+  type XPathNodeSnapshot,
+} from './core/dom-adapter'
 
 interface ParsedXPath {
   select(options: {
@@ -16,12 +20,6 @@ interface XPathModule {
 }
 
 const xpath = xpathPackage as unknown as XPathModule
-
-function nodeTypeOf(node: unknown): number {
-  if (!node || typeof node !== 'object') return 0
-  const nodeType = (node as Node).nodeType
-  return typeof nodeType === 'number' ? nodeType : 0
-}
 
 /**
  * A ready-to-use `DomAdapter` for Node.js, built on `linkedom` + `xpath`.
@@ -48,15 +46,20 @@ export function createNodeDomAdapter(): DomAdapter {
     evaluateXPath(
       expression: string,
       contextNode: Node,
-      namespaces?: Record<string, string> | null,
+      namespaces?: Record<string, string>,
     ): XPathNodeSnapshot {
       const selected = xpath.parse(expression).select({
         node: contextNode,
         isHtml: true,
         allowAnyNamespaceForNoPrefix: true,
-        namespaces: namespaces ?? undefined,
+        namespaces,
       })
-      const nodes = (Array.isArray(selected) ? selected : selected == null ? [] : [selected]).filter(
+      const candidates = Array.isArray(selected)
+        ? selected
+        : selected !== undefined && selected !== null
+          ? [selected]
+          : []
+      const nodes = candidates.filter(
         (node): node is Node =>
           Boolean(node) && typeof node === 'object' && 'nodeType' in (node as object),
       )
@@ -66,10 +69,9 @@ export function createNodeDomAdapter(): DomAdapter {
       }
     },
 
-    isElement: (node: unknown): node is Element => nodeTypeOf(node) === 1,
-    isDocument: (node: unknown): node is Document => nodeTypeOf(node) === 9,
-    isDocumentFragment: (node: unknown): node is DocumentFragment => nodeTypeOf(node) === 11,
-    isShadowRoot: (node: unknown): node is ShadowRoot =>
-      nodeTypeOf(node) === 11 && Boolean((node as { host?: unknown }).host),
+    isElement: browserDomAdapter.isElement,
+    isDocument: browserDomAdapter.isDocument,
+    isDocumentFragment: browserDomAdapter.isDocumentFragment,
+    isShadowRoot: browserDomAdapter.isShadowRoot,
   }
 }

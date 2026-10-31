@@ -102,13 +102,13 @@ export interface TypePositionFilter {
   b: number
 }
 
-function parseNthCoefficients(expr: string): { a: number; b: number } | null {
+function parseNthCoefficients(expr: string): { a: number; b: number } | undefined {
   const cleaned = expr.trim().toLowerCase().replace(/\s+/g, '')
   if (cleaned === 'odd') return { a: 2, b: 1 }
   if (cleaned === 'even') return { a: 2, b: 0 }
   if (/^[+-]?\d+$/.test(cleaned)) return { a: 0, b: parseInt(cleaned, 10) }
   const match = cleaned.match(/^([+-]?\d*)?n([+-]\d+)?$/)
-  if (!match) return null
+  if (!match) return undefined
   const aRaw = match[1]
   const a = aRaw === '' || aRaw === '+' || aRaw === undefined ? 1 : aRaw === '-' ? -1 : parseInt(aRaw, 10)
   const b = match[2] ? parseInt(match[2], 10) : 0
@@ -118,15 +118,15 @@ function parseNthCoefficients(expr: string): { a: number; b: number } | null {
 function terminalCompoundStart(selector: string): number {
   let bracketDepth = 0
   let parenDepth = 0
-  let quote: string | null = null
+  let quote = ''
   let start = 0
   for (let i = 0; i < selector.length; i++) {
     const ch = selector[i]
     if (quote) {
-      if (ch === quote) quote = null
+      if (ch === quote) quote = ''
       continue
     }
-    if (ch === "'" || ch === '\"') {
+    if (ch === "'" || ch === '"') {
       quote = ch
       continue
     }
@@ -159,14 +159,14 @@ export function extractTypePositionFilters(selector: string): {
   selector: string
   filters: TypePositionFilter[]
   nativeVerifySelector?: string
-} | null {
+} | undefined {
   if (splitCssSelectors(selector).length !== 1) {
-    return null
+    return undefined
   }
   const start = terminalCompoundStart(selector)
   const head = selector.slice(0, start)
   const compound = selector.slice(start).trim()
-  if (!compound) return null
+  if (!compound) return undefined
 
   const headWithoutTypePseudos = head.replace(NON_TERMINAL_TYPE_PSEUDO_RE, '')
   const headChanged = headWithoutTypePseudos !== head
@@ -177,7 +177,7 @@ export function extractTypePositionFilters(selector: string): {
   const first = compound[0]
   if (/[a-zA-Z_]/.test(first)) {
     if (!headChanged && !hasNotTypePseudo) {
-      return null
+      return undefined
     }
     const cleanedCompound = hasNotTypePseudo
       ? compound.replace(/:not\([^)]*:(?:first|last|only|nth|nth-last)-of-type[^)]*\)/g, '') || '*'
@@ -209,15 +209,15 @@ export function extractTypePositionFilters(selector: string): {
     }
     if (ch === '[') {
       let depth = 0
-      let quote: string | null = null
+      let quote = ''
       let j = i
       for (; j < compound.length; j++) {
         const inner = compound[j]
         if (quote) {
-          if (inner === quote) quote = null
+          if (inner === quote) quote = ''
           continue
         }
-        if (inner === "'" || inner === '\"') {
+        if (inner === "'" || inner === '"') {
           quote = inner
         } else if (inner === '[') {
           depth++
@@ -229,7 +229,7 @@ export function extractTypePositionFilters(selector: string): {
           }
         }
       }
-      if (depth !== 0) return null
+      if (depth !== 0) return undefined
       stripped += compound.slice(i, j)
       i = j
       continue
@@ -248,18 +248,18 @@ export function extractTypePositionFilters(selector: string): {
     while (nameEnd < compound.length && /[a-zA-Z-]/.test(compound[nameEnd])) nameEnd++
     const name = compound.slice(nameStart, nameEnd)
     let pseudoEnd = nameEnd
-    let arg: string | null = null
+    let arg: string | undefined
     if (compound[nameEnd] === '(') {
       let depth = 0
-      let quote: string | null = null
+      let quote = ''
       let j = nameEnd
       for (; j < compound.length; j++) {
         const inner = compound[j]
         if (quote) {
-          if (inner === quote) quote = null
+          if (inner === quote) quote = ''
           continue
         }
-        if (inner === "'" || inner === '\"') {
+        if (inner === "'" || inner === '"') {
           quote = inner
         } else if (inner === '(') {
           depth++
@@ -271,7 +271,7 @@ export function extractTypePositionFilters(selector: string): {
           }
         }
       }
-      if (depth !== 0) return null
+      if (depth !== 0) return undefined
       arg = compound.slice(nameEnd + 1, j - 1)
       pseudoEnd = j
     }
@@ -282,19 +282,19 @@ export function extractTypePositionFilters(selector: string): {
     }
     const kind = name as TypePositionKind
     if (name === 'nth-of-type' || name === 'nth-last-of-type') {
-      if (arg === null) return null
+      if (arg === undefined) return undefined
       const coeffs = parseNthCoefficients(arg)
-      if (!coeffs) return null
+      if (!coeffs) return undefined
       filters.push({ kind, a: coeffs.a, b: coeffs.b })
     } else {
-      if (arg !== null) return null
+      if (arg !== undefined) return undefined
       filters.push({ kind, a: 0, b: 0 })
     }
     changed = true
     i = pseudoEnd
   }
 
-  if (!changed && !headChanged && !hasNotTypePseudo) return null
+  if (!changed && !headChanged && !hasNotTypePseudo) return undefined
   if (!stripped) stripped = '*'
   return {
     selector: `${headWithoutTypePseudos}${stripped}`,
@@ -351,7 +351,7 @@ interface CompoundStep {
 function tokenizeSingleSelector(selector: string): {
   steps: CompoundStep[]
   textNode: boolean
-  attribute: string | null
+  attribute?: string
 } {
   let remaining = selector.trim()
   if (!remaining) {
@@ -359,7 +359,7 @@ function tokenizeSingleSelector(selector: string): {
   }
 
   let textNode = false
-  let attribute: string | null = null
+  let attribute: string | undefined
 
   const pseudoElemMatch = remaining.match(/::([a-zA-Z_-]+)(?:\(([^)]*)\))?\s*$/)
   if (pseudoElemMatch) {
@@ -591,7 +591,7 @@ function parseCompoundSelector(
       if (!pseudoName) {
         throw new SelectorSyntaxError(`Invalid CSS selector '${fullSelector}': empty pseudo-class`)
       }
-      let pseudoArg: string | null = null
+      let pseudoArg: string | undefined
       if (i < n && raw[i] === '(') {
         i++
         const argStart = i
@@ -655,23 +655,23 @@ function endsWithOddBackslashes(value: string): boolean {
 
 /** Splits an optional CSS Selectors Level 4 case-sensitivity flag (` i` / ` s`,
  * `[attr="v" i]`, `[attr=v s]`, also glued after a closing quote) off the raw
- * attribute value. Returns `null` when no flag is present. Escape-aware: a
+ * attribute value. Returns `undefined` when no flag is present. Escape-aware: a
  * whitespace that is itself escaped (e.g. unquoted `foo\ s` for "foo s") is
  * never treated as a flag separator. */
-function splitAttributeFlag(rawVal: string): { value: string; flag: 'i' | 's' } | null {
+function splitAttributeFlag(rawVal: string): { value: string; flag: 'i' | 's' } | undefined {
   const spaced = rawVal.match(/^(.*?)\s+([iIsS])$/)
   if (spaced) {
     const value = spaced[1].trim()
     if (value.length > 0 && !endsWithOddBackslashes(value)) {
       return { value, flag: spaced[2].toLowerCase() as 'i' | 's' }
     }
-    return null
+    return undefined
   }
   const glued = rawVal.match(/^([\s\S]*["'])\s*([iIsS])$/)
   if (glued) {
     return { value: glued[1], flag: glued[2].toLowerCase() as 'i' | 's' }
   }
-  return null
+  return undefined
 }
 
 function parseAttributeCondition(attrExpr: string, fullSelector: string): string {
@@ -700,9 +700,6 @@ function parseAttributeCondition(attrExpr: string, fullSelector: string): string
     caseInsensitive = flagInfo.flag === 'i'
   }
 
-  // A quoted value must be closed — previously a stray token after the value
-  // (e.g. `[href="foo" x]`) silently became part of the compared string and
-  // the selector matched nothing without any hint.
   if (
     (rawVal.startsWith('"') && (rawVal.length < 2 || !rawVal.endsWith('"'))) ||
     (rawVal.startsWith("'") && (rawVal.length < 2 || !rawVal.endsWith("'")))
@@ -716,9 +713,6 @@ function parseAttributeCondition(attrExpr: string, fullSelector: string): string
   const compareVal = caseInsensitive ? asciiLowercase(val) : val
   const lit = xpathLiteral(compareVal)
 
-  // Case-insensitive matching (CSS `[attr="v" i]`) lowers both sides with
-  // ASCII-only rules — `translate()` in XPath 1.0 only substitutes the exact
-  // characters given, so this stays consistent for non-ASCII text.
   const attrRef = caseInsensitive
     ? `translate(@${attrName}, '${ASCII_UPPERCASE}', '${ASCII_LOWERCASE}')`
     : `@${attrName}`
@@ -756,11 +750,10 @@ function parseAttributeCondition(attrExpr: string, fullSelector: string): string
 
 function parsePseudoCondition(
   name: string,
-  arg: string | null,
+  arg: string | undefined,
   tag: string,
   fullSelector: string,
 ): string {
-  const nodeTest = tag === '*' ? '*' : tag
   switch (name) {
     case 'first-child':
       return 'count(preceding-sibling::*) = 0'
@@ -769,31 +762,31 @@ function parsePseudoCondition(
     case 'only-child':
       return 'count(preceding-sibling::*) = 0 and count(following-sibling::*) = 0'
     case 'first-of-type':
-      return `count(preceding-sibling::${nodeTest}) = 0`
+      return `count(preceding-sibling::${tag}) = 0`
     case 'last-of-type':
-      return `count(following-sibling::${nodeTest}) = 0`
+      return `count(following-sibling::${tag}) = 0`
     case 'only-of-type':
-      return `count(preceding-sibling::${nodeTest}) = 0 and count(following-sibling::${nodeTest}) = 0`
+      return `count(preceding-sibling::${tag}) = 0 and count(following-sibling::${tag}) = 0`
     case 'nth-child':
-      if (arg === null) {
+      if (arg === undefined) {
         throw new SelectorSyntaxError(`Invalid CSS selector '${fullSelector}': :nth-child() requires argument`)
       }
       return parseNthExpression(arg, 'preceding-sibling', '*')
     case 'nth-last-child':
-      if (arg === null) {
+      if (arg === undefined) {
         throw new SelectorSyntaxError(`Invalid CSS selector '${fullSelector}': :nth-last-child() requires argument`)
       }
       return parseNthExpression(arg, 'following-sibling', '*')
     case 'nth-of-type':
-      if (arg === null) {
+      if (arg === undefined) {
         throw new SelectorSyntaxError(`Invalid CSS selector '${fullSelector}': :nth-of-type() requires argument`)
       }
-      return parseNthExpression(arg, 'preceding-sibling', nodeTest)
+      return parseNthExpression(arg, 'preceding-sibling', tag)
     case 'nth-last-of-type':
-      if (arg === null) {
+      if (arg === undefined) {
         throw new SelectorSyntaxError(`Invalid CSS selector '${fullSelector}': :nth-last-of-type() requires argument`)
       }
-      return parseNthExpression(arg, 'following-sibling', nodeTest)
+      return parseNthExpression(arg, 'following-sibling', tag)
     case 'empty':
       return 'not(*) and not(string-length())'
     case 'checked':
@@ -805,7 +798,7 @@ function parsePseudoCondition(
     case 'root':
       return 'not(parent::*)'
     case 'contains': {
-      if (arg === null) {
+      if (arg === undefined) {
         throw new SelectorSyntaxError(`Invalid CSS selector '${fullSelector}': :contains() requires argument`)
       }
       const textVal = unescapeCssValue(arg)
@@ -815,9 +808,6 @@ function parsePseudoCondition(
       if (!arg || !arg.trim()) {
         throw new SelectorSyntaxError(`Invalid CSS selector '${fullSelector}': :not() requires argument`)
       }
-      // CSS Selectors Level 4 allows a selector list inside :not():
-      // `:not(a, .x)` matches elements that satisfy none of the listed
-      // selectors — i.e. `not(first) and not(second) and ...`.
       const innerSelectors = splitCssSelectors(arg)
         .map((part) => part.trim())
         .filter((part) => part.length > 0)
@@ -882,7 +872,7 @@ function translateSingleCssSelector(selector: string, prefix = 'descendant-or-se
   if (textNode) {
     xpath += '/text()'
   }
-  if (attribute !== null) {
+  if (attribute !== undefined) {
     xpath += `/@${attribute}`
   }
 
@@ -892,11 +882,6 @@ function translateSingleCssSelector(selector: string, prefix = 'descendant-or-se
 const cssCache = new Map<string, string>()
 
 export function cssToXpath(query: string, prefix = 'descendant-or-self::'): string {
-  // NUL can never occur in a CSS selector or an axis prefix, so unlike a
-  // ':::'-style separator this key cannot collide across (prefix, query)
-  // pairs — previously `cssToXpath('div', 'a:::b')` and
-  // `cssToXpath('b:::div', 'a')` shared one cache entry and the second call
-  // silently returned the first call's translation.
   const cacheKey = `${prefix}\u0000${query}`
   const cached = cssCache.get(cacheKey)
   if (cached !== undefined) {
@@ -913,5 +898,3 @@ export function cssToXpath(query: string, prefix = 'descendant-or-self::'): stri
   cssCache.set(cacheKey, translated)
   return translated
 }
-
-export const css_to_xpath = cssToXpath

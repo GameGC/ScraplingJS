@@ -1,7 +1,6 @@
 import type { AdaptiveQueryOptions } from '../types'
 import type { DomAdapter, XPathNodeSnapshot } from '../core/dom-adapter'
-import { DomAdapterError } from '../core/errors'
-import { SelectorSyntaxError } from '../core/errors'
+import { DomAdapterError, SelectorSyntaxError } from '../core/errors'
 import {
   collectQueryContextRoots,
   getDeepParentElement,
@@ -15,19 +14,23 @@ import {
 } from '../core/translator'
 import type { InternalNodeWrapper } from './html-loader'
 
-export interface CssQuerySettings {
+export interface QuerySettings<V = string | number> {
   identifier: string
   autoSave: boolean
   percentage: number
-  variables: Record<string, string | number>
+  variables: Record<string, V>
 }
 
-export interface XPathQuerySettings {
-  identifier: string
-  autoSave: boolean
-  percentage: number
-  variables: Record<string, string | number | boolean>
-}
+export type CssQuerySettings = QuerySettings<string | number>
+export type XPathQuerySettings = QuerySettings<string | number | boolean>
+
+const RESERVED_OPTION_KEYS = new Set([
+  'identifier',
+  'adaptive',
+  'autoSave',
+  'percentage',
+  'variables',
+])
 
 export function resolveCssQuerySettings(
   identifierOrOptions: string | AdaptiveQueryOptions | Record<string, string | number> = '',
@@ -41,15 +44,13 @@ export function resolveCssQuerySettings(
   let minPercentage = percentage
   const cssVars: Record<string, string | number> = { ...(variables ?? {}) }
 
-  if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
+  if (typeof identifierOrOptions === 'object') {
     const opts = identifierOrOptions as AdaptiveQueryOptions
     identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
     isAutoSave =
       typeof opts.autoSave === 'boolean'
         ? opts.autoSave
-        : typeof opts.auto_save === 'boolean'
-          ? opts.auto_save
-          : (autoSave ?? defaults.autoSave)
+        : (autoSave ?? defaults.autoSave)
     minPercentage = typeof opts.percentage === 'number' ? opts.percentage : 40
     if (opts.variables) {
       for (const [k, v] of Object.entries(opts.variables)) {
@@ -58,16 +59,8 @@ export function resolveCssQuerySettings(
         }
       }
     }
-    const reserved = new Set([
-      'identifier',
-      'adaptive',
-      'autoSave',
-      'auto_save',
-      'percentage',
-      'variables',
-    ])
     for (const [k, v] of Object.entries(identifierOrOptions)) {
-      if (!reserved.has(k) && (typeof v === 'string' || typeof v === 'number')) {
+      if (!RESERVED_OPTION_KEYS.has(k) && (typeof v === 'string' || typeof v === 'number')) {
         cssVars[k] = v
       }
     }
@@ -93,30 +86,19 @@ export function resolveXPathQuerySettings(
   let identifier = ''
   let isAutoSave = autoSave ?? defaults.autoSave
   let minPercentage = percentage
-  let xpathVars: Record<string, string | number | boolean> =
-    (variables as Record<string, string | number | boolean> | undefined) ?? {}
+  let xpathVars: Record<string, string | number | boolean> = { ...(variables ?? {}) }
 
-  if (typeof identifierOrOptions === 'object' && identifierOrOptions !== null) {
+  if (typeof identifierOrOptions === 'object') {
     const opts = identifierOrOptions as AdaptiveQueryOptions
     identifier = typeof opts.identifier === 'string' ? opts.identifier : ''
     isAutoSave =
       typeof opts.autoSave === 'boolean'
         ? opts.autoSave
-        : typeof opts.auto_save === 'boolean'
-          ? opts.auto_save
-          : (autoSave ?? defaults.autoSave)
+        : (autoSave ?? defaults.autoSave)
     minPercentage = typeof opts.percentage === 'number' ? opts.percentage : 40
-    xpathVars = { ...(variables ?? {}), ...(opts.variables ?? {}) }
-    const reserved = new Set([
-      'identifier',
-      'adaptive',
-      'autoSave',
-      'auto_save',
-      'percentage',
-      'variables',
-    ])
+    xpathVars = { ...xpathVars, ...(opts.variables ?? {}) }
     for (const [k, v] of Object.entries(identifierOrOptions)) {
-      if (!reserved.has(k)) {
+      if (!RESERVED_OPTION_KEYS.has(k)) {
         xpathVars[k] = v as string | number | boolean
       }
     }
@@ -132,12 +114,12 @@ export function resolveXPathQuerySettings(
   }
 }
 
-function variableAlternation(names: readonly string[]): string | null {
+function variableAlternation(names: readonly string[]): string | undefined {
   const usable = names
     .filter((name) => name.length > 0)
     .sort((a, b) => b.length - a.length)
   if (usable.length === 0) {
-    return null
+    return undefined
   }
   return usable.map(escapeRegExpChars).join('|')
 }
@@ -171,7 +153,6 @@ export function interpolateCssSelector(
   )
 }
 
-
 export function interpolateXPathSelector(
   selector: string,
   variables: Record<string, string | number | boolean>,
@@ -197,14 +178,14 @@ export function scopeXPathToContext(expression: string): string {
   const parts: string[] = []
   let start = 0
   let depth = 0
-  let quote: string | null = null
+  let quote = ''
   for (let i = 0; i < expression.length; i++) {
     const ch = expression[i]
     if (quote) {
-      if (ch === quote) quote = null
+      if (ch === quote) quote = ''
       continue
     }
-    if (ch === "'" || ch === '\"') {
+    if (ch === "'" || ch === '"') {
       quote = ch
       continue
     }
@@ -220,10 +201,6 @@ export function scopeXPathToContext(expression: string): string {
   parts.push(expression.slice(start))
 
   return parts
-    // Scope `//` to the context root. The `(?:\(\s*)*` group also catches
-    // parenthesized expressions — `(//div)[1]` must become `(.//div)[1]`;
-    // previously it was left absolute, resolved against the document root and
-    // the out-of-subtree match got filtered away, silently returning nothing.
     .map((part) => part.replace(/^(\s*(?:\(\s*)*)\/\//, '$1.//'))
     .join('|')
 }
@@ -231,14 +208,14 @@ export function scopeXPathToContext(expression: string): string {
 function firstTopLevelCombinatorIndex(selector: string): number {
   let bracketDepth = 0
   let parenDepth = 0
-  let quote: string | null = null
+  let quote = ''
   for (let i = 0; i < selector.length; i++) {
     const ch = selector[i]
     if (quote) {
-      if (ch === quote) quote = null
+      if (ch === quote) quote = ''
       continue
     }
-    if (ch === "'" || ch === '\"') {
+    if (ch === "'" || ch === '"') {
       quote = ch
       continue
     }
@@ -277,19 +254,16 @@ export function tryNativeCssQuery(
   root: Element,
   cssSelector: string,
   contextRoots: readonly Element[],
-): Element[] | null {
-  if (contextRoots.length !== 1) {
-    return null
-  }
+): Element[] | undefined {
   if (
+    contextRoots.length !== 1 ||
     typeof root.querySelectorAll !== 'function' ||
     typeof root.matches !== 'function'
   ) {
-    return null
+    return undefined
   }
 
-  const documentElement = root.ownerDocument?.documentElement
-  const rootIsDocumentElement = documentElement === root
+  const rootIsDocumentElement = root.ownerDocument?.documentElement === root
   const branches = rootIsDocumentElement ? [] : splitCssSelectors(cssSelector)
   const matches: Element[] = []
   const seen = new Set<Element>()
@@ -329,7 +303,7 @@ export function tryNativeCssQuery(
       }
     }
   } catch {
-    return null
+    return undefined
   }
 
   if (branches.length > 1 && matches.length > 1) {
@@ -351,7 +325,7 @@ export function filterByTypePosition(
       'kind' in item
         ? item.kind === 'element'
           ? item.element
-          : (item.parentElement ?? null)
+          : item.parentElement
         : item
     if (!element) return false
     if (filters.length > 0 && !elementMatchesTypePositionFilters(element, filters)) {
@@ -375,15 +349,9 @@ export function runXPathQuery(
   contextRoots?: readonly Element[],
 ): Array<Element | InternalNodeWrapper> {
   const roots = contextRoots ?? collectQueryContextRoots(root, pierceShadow)
-
   const matchedWrappers: Array<Element | InternalNodeWrapper> = []
   const seenNodes = new Set<Node>()
-
-  const documentElement =
-    typeof root.ownerDocument?.documentElement === 'object'
-      ? root.ownerDocument.documentElement
-      : null
-  const rootIsDocumentElement = documentElement === root
+  const rootIsDocumentElement = root.ownerDocument?.documentElement === root
   const contextScopedXpath = scopeXPathToContext(resolvedXpath)
 
   try {
@@ -414,7 +382,7 @@ export function runXPathQuery(
           matchedWrappers.push({
             kind: 'text',
             textValue: item.nodeValue ?? '',
-            parentElement: parentEl,
+            parentElement: parentEl ?? undefined,
           })
         } else if (item.nodeType === 2) {
           const ownerEl = (item as Attr).ownerElement
@@ -428,7 +396,7 @@ export function runXPathQuery(
           matchedWrappers.push({
             kind: 'text',
             textValue: (item as Attr).value ?? '',
-            parentElement: ownerEl,
+            parentElement: ownerEl ?? undefined,
           })
         }
       }

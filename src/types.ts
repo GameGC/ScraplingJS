@@ -25,59 +25,52 @@ export interface ElementFingerprint {
   rect?: BoundingRectInfo | null
 }
 
-export interface StorageSystem {
-  readonly url?: string
-  save(element: Element | ElementFingerprint, identifier: string): void | Promise<void>
-  retrieve(identifier: string): ElementFingerprint | null | Promise<ElementFingerprint | null>
-  close?(): void | Promise<void>
-  load?(): Promise<void>
-  flush?(): void | Promise<void>
+export interface PageContentProvider {
+  content(): string | Promise<string>
+  url?(): string
 }
 
-export interface SelectorOptions {
-  content?: string | Uint8Array
-  root?:
-    | Element
-    | Document
-    | DocumentFragment
-    | ShadowRoot
-    | Node
-    | {
-        kind: 'element'
-        element: Element
-      }
-    | {
-        kind: 'text'
-        textValue: string
-        parentElement?: Element | null
-      }
-  /**
-   * Page URL used to scope adaptive fingerprints. Without it, fingerprints
-   * share the global `default` bucket, so different sites can collide.
-   */
+export interface SimpleStorage {
+  loadAll(
+    url: string,
+  ): Promise<Record<string, ElementFingerprint>> | Record<string, ElementFingerprint>
+  save(
+    url: string,
+    key: string,
+    fingerprint: ElementFingerprint,
+  ): Promise<void> | void
+}
+
+export interface RelocationInfo {
+  foundSuccessfully: boolean
+  key: string
+  selector: string
+  score: number
+  element: Element | null
+  elements: Element[]
+  url: string
+}
+
+export type RelocatedCallback = (
+  foundSuccessfully: boolean,
+  info: RelocationInfo,
+) => void
+
+export interface PageOptions {
   url?: string
-  /** Alias of `url` used as the adaptive storage domain. */
-  adaptiveDomain?: string
-  adaptive_domain?: string
-  encoding?: string
-  keepComments?: boolean
-  keep_comments?: boolean
+  threshold?: number
   pierceShadow?: boolean
-  pierce_shadow?: boolean
-  storage?: StorageSystem | (new (options?: Record<string, unknown>) => StorageSystem)
-  _storage?: StorageSystem
-  storageArgs?: Record<string, unknown>
-  storage_args?: Record<string, unknown>
   dom?: DomAdapter
+  onRelocated?: RelocatedCallback
 }
 
 export interface AdaptiveQueryOptions {
   identifier?: string
-  /** Persist the matched fingerprint for future relocation. Defaults to `true`. */
+  adaptive?: boolean
   autoSave?: boolean
-  auto_save?: boolean
   percentage?: number
   variables?: Record<string, string | number>
+  [key: string]: unknown
 }
 
 export interface GetAllTextOptions {
@@ -106,6 +99,7 @@ export interface FindByTextOptions {
   case_sensitive?: boolean
   cleanMatch?: boolean
   clean_match?: boolean
+  pierceShadow?: boolean
 }
 
 export interface FindByRegexOptions {
@@ -115,6 +109,7 @@ export interface FindByRegexOptions {
   case_sensitive?: boolean
   cleanMatch?: boolean
   clean_match?: boolean
+  pierceShadow?: boolean
 }
 
 export interface RegexExtractOptions {
@@ -128,54 +123,9 @@ export interface RegexExtractOptions {
   check_match?: boolean
 }
 
-export interface PagePersistenceWatcherOptions {
-  identifier?: string
-  selector: string
-  mode?: 'auto' | 'css' | 'xpath' | 'text'
-  percentage?: number
-  autoUpdateFingerprint?: boolean
-  root?: Element | Document
-  filter?: (element: HTMLElement) => boolean
-  variables?: Record<string, string | number>
-  onResolved?: (element: HTMLElement, relocated: boolean, score?: number) => void
-  onLost?: () => void
-}
-
-export interface CapturedElementInfo {
-  identifier: string
-  cssSelector: string
-  fullCssSelector: string
-  xpathSelector: string
-  fullXpathSelector: string
-  fingerprint: ElementFingerprint
-}
-
-export interface RelocationEvent {
-  identifier: string
-  brokenSelector: string
-  newCssSelector: string
-  newFullCssSelector: string
-  newXpathSelector: string
-  score: number
-  url: string
-  oldFingerprint: ElementFingerprint
-  newElement: HTMLElement
-}
-
-export type RelocationCallback = (
-  oldElement: ElementFingerprint,
-  newElement: HTMLElement,
-  event: RelocationEvent,
-) => void
-
-export type SelectorWaitState = 'attached' | 'detached' | 'visible' | 'hidden'
-
-export interface ElementWaitAction {
-  type: 'wait_element'
-  target: string
-  state?: SelectorWaitState
-  timeout?: number
-  signal?: AbortSignal
-}
-
-export type BrowserAction = ElementWaitAction
+export type FindPredicate =
+  | string
+  | Iterable<string>
+  | Record<string, string>
+  | RegExp
+  | ((element: Element) => boolean)

@@ -30,7 +30,7 @@ function isStableClassToken(token: string): boolean {
   return true
 }
 
-export function extractStableClasses(classAttr?: string | null): string[] {
+export function extractStableClasses(classAttr?: string): string[] {
   if (!classAttr) return []
   return classAttr
     .split(/\s+/)
@@ -87,10 +87,6 @@ export class StorageTools {
     return path
   }
 
-  static _get_element_path(element: Element): string[] {
-    return StorageTools.getElementPath(element)
-  }
-
   static elementToDict(element: Element, includeRect = false): ElementFingerprint {
     const parent = getDeepParentElement(element)
     const directText = getElementDirectText(element).trim()
@@ -101,8 +97,8 @@ export class StorageTools {
     const result: ElementFingerprint = {
       tag: element.tagName.toLowerCase(),
       attributes: cleanedAttrs,
-      text: directText ? directText : null,
-      all_text: fullText ? fullText : null,
+      text: directText || null,
+      all_text: fullText || null,
       path,
       depth: path.length,
     }
@@ -133,7 +129,7 @@ export class StorageTools {
       const parentText = getElementDirectText(parent).trim()
       result.parent_name = parent.tagName.toLowerCase()
       result.parent_attribs = parentAttribs
-      result.parent_text = parentText ? parentText : null
+      result.parent_text = parentText || null
 
       const siblings: string[] = []
       let sameTagIndex = 0
@@ -201,10 +197,4 @@ export class StorageTools {
 
     return result
   }
-
-  static element_to_dict(element: Element, includeRect = false): ElementFingerprint {
-    return StorageTools.elementToDict(element, includeRect)
-  }
 }
-
-export const _StorageTools = StorageTools

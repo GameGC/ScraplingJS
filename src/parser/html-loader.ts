@@ -3,7 +3,7 @@ import { getDeepParentElement } from '../core/shadow-dom'
 
 export type InternalNodeWrapper =
   | { kind: 'element'; element: Element }
-  | { kind: 'text'; textValue: string; parentElement?: Element | null }
+  | { kind: 'text'; textValue: string; parentElement?: Element }
 
 export interface LoadedSelectorRoot {
   wrapper: InternalNodeWrapper
@@ -25,10 +25,6 @@ function removeCommentsFromNode(root: Node): void {
   }
 }
 
-function normalizeTextNodes(root: Node): void {
-  root.normalize()
-}
-
 function parseHtmlToElement(
   htmlContent: string,
   keepComments: boolean,
@@ -38,7 +34,7 @@ function parseHtmlToElement(
   const doc = adapter.parseHtml(cleaned, 'text/html')
   if (!keepComments) {
     removeCommentsFromNode(doc)
-    normalizeTextNodes(doc)
+    doc.normalize()
   }
   return {
     rootElement: doc.documentElement,
@@ -132,12 +128,9 @@ export function loadSelectorRoot(
     'kind' in rootArg &&
     (rootArg.kind === 'text' || rootArg.kind === 'element')
   ) {
-    return { wrapper: rootArg as InternalNodeWrapper, rawBody: '' }
+    return { wrapper: rootArg, rawBody: '' }
   }
   if (adapter.isDocument(rootArg)) {
-    // Never mutate a caller-owned document: wrapping it must be a read-only
-    // operation. Comment stripping/normalization only applies to documents we
-    // parsed ourselves from a string above.
     return {
       wrapper: { kind: 'element', element: rootArg.documentElement },
       rawBody: '',
@@ -158,7 +151,6 @@ export function loadSelectorRoot(
       wrapper: {
         kind: 'text',
         textValue: rootArg.textContent ?? '',
-        parentElement: null,
       },
       rawBody: '',
     }
@@ -170,7 +162,7 @@ export function loadSelectorRoot(
         wrapper: {
           kind: 'text',
           textValue: node.nodeValue ?? '',
-          parentElement: getDeepParentElement(node),
+          parentElement: getDeepParentElement(node) ?? undefined,
         },
         rawBody: '',
       }
@@ -180,14 +172,8 @@ export function loadSelectorRoot(
         wrapper: {
           kind: 'text',
           textValue: (node as Attr).value ?? node.nodeValue ?? '',
-          parentElement: (node as Attr).ownerElement ?? null,
+          parentElement: (node as Attr).ownerElement ?? undefined,
         },
-        rawBody: '',
-      }
-    }
-    if (node.nodeType === 9 && (node as Document).documentElement) {
-      return {
-        wrapper: { kind: 'element', element: (node as Document).documentElement },
         rawBody: '',
       }
     }
@@ -195,7 +181,7 @@ export function loadSelectorRoot(
       wrapper: {
         kind: 'text',
         textValue: String(node.textContent ?? ''),
-        parentElement: getDeepParentElement(node),
+        parentElement: getDeepParentElement(node) ?? undefined,
       },
       rawBody: '',
     }

@@ -5,13 +5,6 @@ export class SelectorSyntaxError extends Error {
   }
 }
 
-export class SelectorError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'SelectorError'
-  }
-}
-
 export class DomAdapterError extends Error {
   constructor(message: string) {
     super(message)
