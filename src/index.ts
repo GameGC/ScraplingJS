@@ -224,7 +224,7 @@ export interface Page {
   find<T extends Element = Element>(
     selector: string,
     keyOrOptions?: string | AdaptiveQueryOptions,
-  ): Promise<T | null>
+  ): T | null
   /**
    * Finds all matching `Element[]` by CSS or XPath selector (auto-detected).
    * Saves the primary fingerprint on match; relocates the full list of peer elements if broken.
@@ -232,17 +232,17 @@ export interface Page {
   findAll<T extends Element = Element>(
     selector: string,
     keyOrOptions?: string | AdaptiveQueryOptions,
-  ): Promise<T[]>
+  ): T[]
   /** Adaptive CSS query returning all matching `Element[]` (with self-healing fallback). */
   css<T extends Element = Element>(
     selector: string,
     keyOrOptions?: string | AdaptiveQueryOptions,
-  ): Promise<T[]>
+  ): T[]
   /** Adaptive XPath query returning all matching `Element[]` (with self-healing fallback). */
   xpath<T extends Element = Element>(
     expression: string,
     keyOrOptions?: string | AdaptiveQueryOptions,
-  ): Promise<T[]>
+  ): T[]
   /** Finds the first element matching a combination of tag names, attribute maps, RegExp, or filter functions. */
   findPredicates<T extends Element = Element>(...predicates: FindPredicate[]): T | null
   /** Finds all elements matching a combination of tag names, attribute maps, RegExp, or filter functions. */
@@ -469,11 +469,11 @@ function createPage(
       : queryDirectCss(root, selector, pierceShadow, dom)
   }
 
-  const runSingle = async <T extends Element = Element>(
+  const runSingle = <T extends Element = Element>(
     selector: string,
     keyOrOptions?: string | AdaptiveQueryOptions,
     mode: 'auto' | 'css' | 'xpath' = 'auto',
-  ): Promise<T | null> => {
+  ): T | null => {
     const useXPath = mode === 'xpath' || (mode === 'auto' && isXPathSelector(selector))
     const call = resolveCallOptions(selector, keyOrOptions, useXPath, threshold)
     const direct = directQuery(call.execSelector, useXPath)
@@ -533,11 +533,11 @@ function createPage(
     return null
   }
 
-  const runMultiple = async <T extends Element = Element>(
+  const runMultiple = <T extends Element = Element>(
     selector: string,
     keyOrOptions?: string | AdaptiveQueryOptions,
     mode: 'auto' | 'css' | 'xpath' = 'auto',
-  ): Promise<T[]> => {
+  ): T[] => {
     const useXPath = mode === 'xpath' || (mode === 'auto' && isXPathSelector(selector))
     const call = resolveCallOptions(selector, keyOrOptions, useXPath, threshold)
     const direct = directQuery(call.execSelector, useXPath)
